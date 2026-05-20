@@ -1,0 +1,34 @@
+# Compiled binaries (built fresh from source)
+/accuranker-pp-cli
+/accuranker-pp-mcp
+/build/stage/
+/build/*.mcpb
+
+# Local caches / dev artifacts
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.tmp
+.DS_Store
+
+# Codex / Claude scratch markers (in case of future tool runs)
+_codex-result.json
+
+# Editor / IDE noise
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local secrets — never commit these
+.env
+.env.*
+config.local.*
+*.token
+*-token.txt
+
+# Build outputs that should be regenerated
+dist/
+coverage.out
+*.cover

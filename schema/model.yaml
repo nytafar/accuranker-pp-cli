@@ -1,0 +1,625 @@
+# =============================================================================
+# AccuRanker CLI — Canonical Data Model
+# =============================================================================
+#
+# This file is the single source of truth for:
+#
+#   1. SQLite migrations applied at CLI startup (internal/store/accuranker_schema.go)
+#   2. Postgres DDL emitted by `accuranker-pp-cli schema --format postgres-ddl`
+#   3. Default `fields=` query-parameter values per resource (mandatory for AccuRanker
+#      Read endpoints — without `fields=`, responses are empty objects)
+#   4. The filter-dimension catalog exposed by `filters list` / `filters describe`
+#   5. The contract a downstream Bun-based MCP service reads to build a Postgres
+#      mirror of AccuRanker data
+#
+# Editing rules:
+#   - Add or rename a column? Edit it here ONLY. Both the SQLite migration code
+#     and the Postgres DDL emitter read from this file. A test in
+#     internal/store/accuranker_schema_test.go fails if the live SQLite schema
+#     drifts from this file.
+#   - Types use the canonical names: integer, bigint, numeric, text, timestamp,
+#     date, boolean, json. Adapters translate per database:
+#       SQLite   : integer -> INTEGER, numeric -> REAL, text -> TEXT,
+#                  timestamp/date -> TEXT (ISO-8601), boolean -> INTEGER,
+#                  json -> TEXT
+#       Postgres : integer -> INTEGER, bigint -> BIGINT, numeric -> NUMERIC,
+#                  text -> TEXT, timestamp -> TIMESTAMPTZ, date -> DATE,
+#                  boolean -> BOOLEAN, json -> JSONB
+#   - "primary_key", "foreign_key", "not_null", "indexed" are explicit booleans.
+#   - "default_fields" is the value the CLI auto-substitutes for `fields=` on
+#     list/get requests when the user did not pass --fields explicitly.
+#
+# =============================================================================
+
+version: 1
+schema_name: accuranker
+
+# -----------------------------------------------------------------------------
+# Resources (typed tables)
+# -----------------------------------------------------------------------------
+# Order matters for migrations: parents must come before children to satisfy
+# foreign-key constraints when Postgres enforces them.
+# -----------------------------------------------------------------------------
+
+resources:
+  # ---- Identity / hierarchy -------------------------------------------------
+
+  - name: accounts
+    description: AccuRanker accounts the API token can see.
+    source_endpoint: GET /api/v4/accounts/
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,name,organizations.id,organizations.name,organizations.type"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: name,              type: text,      not_null: true }
+      - { name: organizations,     type: json }                # list of {id,name,type}
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    indexes:
+      - { name: accounts_synced_at_idx, columns: [synced_at] }
+
+  - name: groups
+    description: Client groups that contain domains. ("Client" in legacy spec.)
+    source_endpoint: derived from domains.group object
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,name"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: name,              type: text,      not_null: true }
+      - { name: created_at,        type: timestamp }
+      - { name: organization_id,   type: bigint }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    indexes:
+      - { name: groups_name_idx, columns: [name] }
+
+  - name: domains
+    description: Tracked domains. Parent of keywords, landing_pages, tags, competitors.
+    source_endpoint: GET /api/v4/domains/
+    cursor_field: last_scraped
+    primary_key: [id]
+    default_fields: "id,domain,display_name,created_at,last_scraped,group.id,group.name,google_business_name,google_business_name_list,x_handle,linkedin_profile,facebook_profile,instagram_profile,tiktok_profile"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: domain,            type: text,      not_null: true }
+      - { name: display_name,      type: text }
+      - { name: group_id,          type: bigint,    foreign_key: "groups.id" }
+      - { name: created_at,        type: timestamp }
+      - { name: last_scraped,      type: timestamp }
+      - { name: google_business_name,      type: text }
+      - { name: google_business_name_list, type: json }
+      - { name: x_handle,          type: text }
+      - { name: linkedin_profile,  type: text }
+      - { name: facebook_profile,  type: text }
+      - { name: instagram_profile, type: text }
+      - { name: tiktok_profile,    type: text }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    indexes:
+      - { name: domains_domain_idx,      columns: [domain] }
+      - { name: domains_group_idx,       columns: [group_id] }
+      - { name: domains_last_scraped_idx, columns: [last_scraped] }
+
+  - name: competitors
+    description: Tracked competitor domains per primary domain. Cardinality ~5 per domain.
+    source_endpoint: GET /api/v4/domains/{id}/?fields=...,competitors.*
+    cursor_field: created_at
+    primary_key: [id]
+    default_fields: "id,domain,display_name,created_at,google_business_name,google_business_name_list,x_handle,linkedin_profile,facebook_profile,instagram_profile,tiktok_profile"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
+      - { name: domain,            type: text,      not_null: true }
+      - { name: display_name,      type: text }
+      - { name: created_at,        type: timestamp }
+      - { name: google_business_name,      type: text }
+      - { name: google_business_name_list, type: json }
+      - { name: x_handle,          type: text }
+      - { name: linkedin_profile,  type: text }
+      - { name: facebook_profile,  type: text }
+      - { name: instagram_profile, type: text }
+      - { name: tiktok_profile,    type: text }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    indexes:
+      - { name: competitors_domain_idx, columns: [domain_id] }
+
+  # ---- Keyword (highest-cardinality) ----------------------------------------
+
+  - name: keywords
+    description: Keywords tracked under a domain. Highest-cardinality resource.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,starred,keyword,description,tags,dynamic_tags,search_type,created_at,search_location,search_locale.id,search_locale.country_code,search_locale.locale,search_locale.region,search_locale.region_code,search_engine.id,search_engine.name,preferred_landing_page.url,preferred_landing_page.match,search_volume.id,search_volume.search_volume,search_volume.avg_cost_per_click,search_volume.competition,ai_search_volume.id,ai_search_volume.search_volume,ai_search_volume.search_volume_total,folders"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
+      - { name: keyword,           type: text,      not_null: true }
+      - { name: description,       type: text }
+      - { name: starred,           type: boolean,   not_null: true, default: false }
+      - { name: tags,              type: json }     # array of strings
+      - { name: dynamic_tags,      type: json }     # array of strings
+      - { name: search_type,       type: integer }  # 1=Desktop, 2=Mobile
+      - { name: search_location,   type: text }
+      - { name: search_locale,     type: json }     # CountryLocale object
+      - { name: search_engine_id,  type: integer }
+      - { name: search_engine_name, type: text }
+      - { name: preferred_landing_page, type: json } # PreferredLandingPage object
+      - { name: search_volume_value, type: integer }
+      - { name: search_volume_avg_cpc, type: numeric }
+      - { name: search_volume_competition, type: numeric }
+      - { name: ai_search_volume_value, type: integer }
+      - { name: ai_search_volume_total, type: integer }
+      - { name: folders,           type: json }
+      - { name: created_at,        type: timestamp }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    indexes:
+      - { name: keywords_domain_idx,  columns: [domain_id] }
+      - { name: keywords_keyword_idx, columns: [keyword] }
+      - { name: keywords_search_engine_idx, columns: [search_engine_id] }
+
+  - name: keyword_ranks
+    description: Daily rank snapshot per keyword. The fact table of the warehouse.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=ranks.*&period_from=&period_to=
+    cursor_field: created_at  # ISO timestamp of the daily rank refresh
+    primary_key: [keyword_id, search_date]
+    default_fields: "ranks.id,ranks.created_at,ranks.rank,ranks.share_of_voice,ranks.share_of_voice_percentage,ranks.estimated_visits,ranks.ai_share_of_voice,ranks.ctr,ranks.ctr_max,ranks.search_intent,ranks.highest_ranking_page,ranks.landing_page,ranks.title_description,ranks.extra_ranks,ranks.above_the_fold,ranks.browser_position_x1,ranks.browser_position_y1,ranks.browser_position_x2,ranks.browser_position_y2,ranks.page_serp_features,ranks.base_rank,ranks.local_pack_rank,ranks.max_rank,ranks.max_ai_sov,ranks.max_sov,ranks.max_sov_percentage,ranks.ai_traffic_value,ranks.max_ai_traffic_value,ranks.top_domain,ranks.ai_overview_text,ranks.ai_overview_urls,ranks.count_ai_overview_urls"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: false }
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id", indexed: true }
+      - { name: search_date,       type: date,      not_null: true }
+      - { name: created_at,        type: timestamp }
+      - { name: rank,              type: integer }
+      - { name: share_of_voice,    type: integer }
+      - { name: share_of_voice_percentage, type: numeric }
+      - { name: estimated_visits,  type: integer }
+      - { name: ai_share_of_voice, type: integer }
+      - { name: ctr,               type: numeric }
+      - { name: ctr_max,           type: numeric }
+      - { name: search_intent,     type: json }
+      - { name: highest_ranking_page, type: text }
+      - { name: landing_page,      type: json }
+      - { name: title_description, type: json }
+      - { name: extra_ranks,       type: json }
+      - { name: above_the_fold,    type: boolean }
+      - { name: browser_position_x1, type: integer }
+      - { name: browser_position_y1, type: integer }
+      - { name: browser_position_x2, type: integer }
+      - { name: browser_position_y2, type: integer }
+      - { name: page_serp_features, type: json }
+      - { name: base_rank,         type: integer }
+      - { name: local_pack_rank,   type: integer }
+      - { name: max_rank,          type: integer }
+      - { name: max_ai_sov,        type: integer }
+      - { name: max_sov,           type: integer }
+      - { name: max_sov_percentage, type: numeric }
+      - { name: ai_traffic_value,  type: numeric }
+      - { name: max_ai_traffic_value, type: numeric }
+      - { name: top_domain,        type: text }
+      - { name: ai_overview_text,  type: text }
+      - { name: ai_overview_urls,  type: json }
+      - { name: count_ai_overview_urls, type: integer }
+      - { name: is_initial,        type: boolean, not_null: true, default: false }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, search_date, is_initial]
+    indexes:
+      - { name: keyword_ranks_keyword_date_idx, columns: [keyword_id, search_date] }
+      - { name: keyword_ranks_search_date_idx,  columns: [search_date] }
+
+  - name: keyword_competitor_ranks
+    description: Per-keyword rank of each tracked competitor on the same SERP and date.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=competitor_ranks.*&period_from=&period_to=
+    cursor_field: created_at
+    primary_key: [keyword_id, competitor_id, search_date]
+    default_fields: "competitor_ranks.id,competitor_ranks.created_at,competitor_ranks.rank,competitor_ranks.competitor.id,competitor_ranks.competitor.domain,competitor_ranks.share_of_voice,competitor_ranks.estimated_visits,competitor_ranks.highest_ranking_page,competitor_ranks.title_description"
+    columns:
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
+      - { name: competitor_id,     type: bigint,    not_null: true, foreign_key: "competitors.id" }
+      - { name: search_date,       type: date,      not_null: true }
+      - { name: created_at,        type: timestamp }
+      - { name: rank,              type: integer }
+      - { name: share_of_voice,    type: integer }
+      - { name: estimated_visits,  type: integer }
+      - { name: highest_ranking_page, type: text }
+      - { name: title_description, type: json }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, competitor_id, search_date]
+    indexes:
+      - { name: kcr_keyword_idx,    columns: [keyword_id] }
+      - { name: kcr_competitor_idx, columns: [competitor_id] }
+      - { name: kcr_search_date_idx, columns: [search_date] }
+
+  # ---- Per-keyword auxiliary arrays ----------------------------------------
+
+  - name: keyword_people_also_ask
+    description: People Also Ask terms scraped per keyword.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=people_also_ask.*
+    cursor_field: last_seen_at
+    columns:
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
+      - { name: term,              type: text,      not_null: true }
+      - { name: last_seen_at,      type: timestamp }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, term]
+
+  - name: keyword_full_serp
+    description: Full SERP snapshot snippets per keyword (top_domain + elements).
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=full_serp.*
+    cursor_field: created_at
+    columns:
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
+      - { name: search_date,       type: date,      not_null: true }
+      - { name: created_at,        type: timestamp }
+      - { name: search_intent,     type: json }
+      - { name: top_domain,        type: text }
+      - { name: elements,          type: json }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, search_date]
+
+  # ---- Per-keyword time-series volumes -------------------------------------
+
+  - name: search_volume_history
+    description: Historical monthly search volume per keyword.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=search_volume.history.*
+    cursor_field: month
+    columns:
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
+      - { name: month,             type: date,      not_null: true }  # first day of month
+      - { name: search_volume,     type: integer }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, month]
+    indexes:
+      - { name: svh_keyword_month_idx, columns: [keyword_id, month] }
+
+  - name: ai_search_volume_history
+    description: Historical monthly AI-search volume per keyword.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=ai_search_volume.history.*
+    cursor_field: month
+    columns:
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
+      - { name: month,             type: date,      not_null: true }
+      - { name: search_volume,     type: integer }
+      - { name: search_volume_total, type: integer }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [keyword_id, month]
+
+  # ---- Aggregated daily histories per dimension ----------------------------
+
+  - name: domain_history
+    description: Per-domain aggregated metrics, one row per day.
+    source_endpoint: GET /api/v4/domains/{id}/?fields=history.*&period_from=&period_to=
+    cursor_field: date
+    primary_key: [domain_id, date]
+    default_fields: "history.date,history.ranking_movement,history.ranking_distribution,history.share_of_voice,history.share_of_voice_percentage,history.search_volume,history.average_rank,history.average_local_pack_rank,history.average_ctr,history.average_ctr_max,history.estimated_visits,history.ai_share_of_voice,history.above_the_fold,history.informational_intent,history.commercial_intent,history.transactional_intent,history.navigational_intent,history.traffic_value,history.ai_traffic_value,history.pixels_from_top,history.avg_base_rank,history.ai_search_volume,history.keywords_with_ai_overview,history.keywords_with_ai_overview_owned"
+    columns:
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
+      - { name: date,              type: date,      not_null: true }
+      - { name: ranking_movement,  type: json }
+      - { name: ranking_distribution, type: json }
+      - { name: share_of_voice,    type: integer }
+      - { name: share_of_voice_percentage, type: numeric }
+      - { name: search_volume,     type: integer }
+      - { name: average_rank,      type: numeric }
+      - { name: average_local_pack_rank, type: numeric }
+      - { name: average_ctr,       type: numeric }
+      - { name: average_ctr_max,   type: numeric }
+      - { name: estimated_visits,  type: integer }
+      - { name: ai_share_of_voice, type: integer }
+      - { name: above_the_fold,    type: integer }
+      - { name: informational_intent, type: integer }
+      - { name: commercial_intent,    type: integer }
+      - { name: transactional_intent, type: integer }
+      - { name: navigational_intent,  type: integer }
+      - { name: traffic_value,     type: integer }
+      - { name: ai_traffic_value,  type: integer }
+      - { name: pixels_from_top,   type: numeric }
+      - { name: avg_base_rank,     type: numeric }
+      - { name: ai_search_volume,  type: integer }
+      - { name: keywords_with_ai_overview,       type: integer }
+      - { name: keywords_with_ai_overview_owned, type: integer }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [domain_id, date]
+    indexes:
+      - { name: domain_history_date_idx, columns: [date] }
+
+  - name: competitor_history
+    description: Per-competitor aggregated metrics, one row per day.
+    source_endpoint: GET /api/v4/domains/{id}/?fields=competitors.history.*
+    cursor_field: date
+    columns:
+      - { name: competitor_id,     type: bigint,    not_null: true, foreign_key: "competitors.id" }
+      - { name: date,              type: date,      not_null: true }
+      - { name: ranking_movement,  type: json }
+      - { name: ranking_distribution, type: json }
+      - { name: average_rank,      type: numeric }
+      - { name: average_local_pack_rank, type: numeric }
+      - { name: share_of_voice,    type: integer }
+      - { name: share_of_voice_percentage, type: numeric }
+      - { name: search_volume,     type: integer }
+      - { name: average_ctr,       type: numeric }
+      - { name: average_ctr_max,   type: numeric }
+      - { name: estimated_visits,  type: integer }
+      - { name: ai_share_of_voice, type: integer }
+      - { name: above_the_fold,    type: integer }
+      - { name: informational_intent, type: integer }
+      - { name: commercial_intent,    type: integer }
+      - { name: transactional_intent, type: integer }
+      - { name: navigational_intent,  type: integer }
+      - { name: traffic_value,     type: integer }
+      - { name: ai_traffic_value,  type: integer }
+      - { name: pixels_from_top,   type: numeric }
+      - { name: avg_base_rank,     type: numeric }
+      - { name: ai_search_volume,  type: integer }
+      - { name: keywords_with_ai_overview,       type: integer }
+      - { name: keywords_with_ai_overview_owned, type: integer }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [competitor_id, date]
+
+  - name: landing_pages
+    description: Tracked landing pages (URLs) per domain.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/landing_pages/
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,landing_page,title,history.date,history.share_of_voice,history.average_rank,history.estimated_visits,history.search_volume,history.keywords,history.ai_share_of_voice,history.above_the_fold,history.traffic_value,history.ai_traffic_value"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
+      - { name: landing_page,      type: text,      not_null: true }
+      - { name: title,             type: text }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+
+  - name: landing_page_history
+    description: Per-landing-page aggregated metrics, one row per day.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/landing_pages/{id}/?fields=history.*
+    cursor_field: date
+    columns:
+      - { name: landing_page_id,   type: bigint,    not_null: true, foreign_key: "landing_pages.id" }
+      - { name: date,              type: date,      not_null: true }
+      - { name: average_rank,      type: numeric }
+      - { name: average_local_pack_rank, type: numeric }
+      - { name: share_of_voice,    type: integer }
+      - { name: share_of_voice_percentage, type: numeric }
+      - { name: search_volume,     type: integer }
+      - { name: keywords,          type: integer }
+      - { name: average_ctr,       type: numeric }
+      - { name: average_ctr_max,   type: numeric }
+      - { name: estimated_visits,  type: integer }
+      - { name: ai_share_of_voice, type: integer }
+      - { name: above_the_fold,    type: integer }
+      - { name: informational_intent, type: integer }
+      - { name: transactional_intent, type: integer }
+      - { name: navigational_intent,  type: integer }
+      - { name: commercial_intent,    type: integer }
+      - { name: traffic_value,     type: integer }
+      - { name: ai_traffic_value,  type: integer }
+      - { name: pixels_from_top,   type: numeric }
+      - { name: avg_base_rank,     type: numeric }
+      - { name: ai_search_volume,  type: integer }
+      - { name: keywords_with_ai_overview,       type: integer }
+      - { name: keywords_with_ai_overview_owned, type: integer }
+      - { name: ga4,               type: json }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [landing_page_id, date]
+
+  - name: tags
+    description: Distinct keyword tags per domain.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/tags/
+    cursor_field: tag
+    primary_key: [domain_id, tag]
+    default_fields: "tag,history.date,history.share_of_voice,history.average_rank,history.estimated_visits,history.search_volume,history.keywords,history.ai_share_of_voice"
+    columns:
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
+      - { name: tag,               type: text,      not_null: true }
+      - { name: is_dynamic,        type: boolean,   not_null: true, default: false }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+
+  - name: tag_history
+    description: Per-tag aggregated metrics, one row per day.
+    source_endpoint: GET /api/v4/domains/{domain_pk}/tags/{name}/?fields=history.*
+    cursor_field: date
+    columns:
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
+      - { name: tag,               type: text,      not_null: true }
+      - { name: date,              type: date,      not_null: true }
+      - { name: average_rank,      type: numeric }
+      - { name: average_local_pack_rank, type: numeric }
+      - { name: share_of_voice,    type: integer }
+      - { name: share_of_voice_percentage, type: numeric }
+      - { name: search_volume,     type: integer }
+      - { name: keywords,          type: integer }
+      - { name: average_ctr,       type: numeric }
+      - { name: average_ctr_max,   type: numeric }
+      - { name: estimated_visits,  type: integer }
+      - { name: ai_share_of_voice, type: integer }
+      - { name: above_the_fold,    type: integer }
+      - { name: informational_intent, type: integer }
+      - { name: transactional_intent, type: integer }
+      - { name: navigational_intent,  type: integer }
+      - { name: commercial_intent,    type: integer }
+      - { name: traffic_value,     type: integer }
+      - { name: ai_traffic_value,  type: integer }
+      - { name: pixels_from_top,   type: numeric }
+      - { name: avg_base_rank,     type: numeric }
+      - { name: ai_search_volume,  type: integer }
+      - { name: keywords_with_ai_overview,       type: integer }
+      - { name: keywords_with_ai_overview_owned, type: integer }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [domain_id, tag, date]
+
+  # ---- LLM/AI mode (paywalled) ----------------------------------------------
+
+  - name: brands
+    description: AccuLLM brands. Requires LLM API plan tier; commands emit exit code 45 if denied.
+    source_endpoint: GET /api/v4/brands/
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,domain,display_name,brand_list,created_at,last_scraped,group.id,group.name"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: domain,            type: text,      not_null: true }
+      - { name: display_name,      type: text }
+      - { name: group_id,          type: bigint,    foreign_key: "groups.id" }
+      - { name: brand_list,        type: json }
+      - { name: created_at,        type: timestamp }
+      - { name: last_scraped,      type: timestamp }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+
+  - name: prompts
+    description: AccuLLM prompts under a brand.
+    source_endpoint: GET /api/v4/brands/{brands_pk}/prompts/
+    cursor_field: id
+    primary_key: [id]
+    default_fields: "id,starred,prompt,description,tags,created_at,country_code,results.created_at,results.search_engine,results.top_source,results.top_brand,results.prompt_response,results.prompt_response_length"
+    columns:
+      - { name: id,                type: bigint,    not_null: true, primary_key: true }
+      - { name: brand_id,          type: bigint,    not_null: true, foreign_key: "brands.id", indexed: true }
+      - { name: prompt,            type: text,      not_null: true }
+      - { name: description,       type: text }
+      - { name: starred,           type: boolean,   not_null: true, default: false }
+      - { name: tags,              type: json }
+      - { name: country_code,      type: text }
+      - { name: created_at,        type: timestamp }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+
+  - name: prompt_results
+    description: Per-prompt LLM-search results time-series.
+    source_endpoint: GET /api/v4/brands/{brands_pk}/prompts/{id}/?fields=results.*
+    cursor_field: created_at
+    columns:
+      - { name: prompt_id,         type: bigint,    not_null: true, foreign_key: "prompts.id" }
+      - { name: search_date,       type: date,      not_null: true }
+      - { name: created_at,        type: timestamp }
+      - { name: search_engine,     type: text }
+      - { name: top_source,        type: text }
+      - { name: top_brand,         type: text }
+      - { name: prompt_response,   type: text }
+      - { name: prompt_response_length, type: integer }
+      - { name: related_prompts,   type: json }
+      - { name: brands,            type: json }
+      - { name: sources,           type: json }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+    primary_key_constraint: [prompt_id, search_date]
+
+  # ---- Sync metadata --------------------------------------------------------
+
+  - name: sync_cursor
+    description: Per-(resource, scope) cursor recording last_synced_date and counters.
+    source_endpoint: internal
+    cursor_field: last_synced_at
+    columns:
+      - { name: resource,          type: text,      not_null: true }
+      - { name: scope,             type: text,      not_null: true }  # e.g. domain_id=N or brand_id=N or "global"
+      - { name: last_period_to,    type: date }
+      - { name: last_synced_at,    type: timestamp, not_null: true, default_fn: now }
+      - { name: rows_seen,         type: bigint,    not_null: true, default: 0 }
+      - { name: last_error,        type: text }
+    primary_key_constraint: [resource, scope]
+
+# -----------------------------------------------------------------------------
+# Filter dimensions catalog (drives `filters list` / `filters describe`)
+# -----------------------------------------------------------------------------
+# Class determines which comparators are legal:
+#   numeric  -> eq, ne, gt, gte, lt, lte, between, is_null
+#   string   -> eq, ne, contains, not_contains, starts_with, ends_with, regex, not_regex
+#   array    -> any, all, none, empty
+#   boolean  -> eq
+#   date     -> eq, ne, gt, gte, lt, lte, between, is_null
+#   folder   -> folder_or_subfolder, exact_folder
+# -----------------------------------------------------------------------------
+
+filter_dimensions:
+  - { name: above_the_fold, class: boolean }
+  - { name: ai_search_volume, class: numeric }
+  - { name: ai_traffic_value, class: numeric }
+  - { name: ai_traffic_value_change, class: numeric }
+  - { name: alphabet, class: string, accepted_comparators: [eq] }
+  - { name: avg_cost_per_click, class: numeric }
+  - { name: base_rank, class: numeric }
+  - { name: base_rank_change, class: numeric }
+  - { name: competition, class: numeric }
+  - { name: country_locale_id, class: numeric, accepted_comparators: [eq] }
+  - { name: date_added, class: date }
+  - { name: domain, class: string }
+  - { name: dynamic_ctr, class: numeric }
+  - { name: dynamic_ctr_change, class: numeric }
+  - { name: dynamic_ctr_max, class: numeric }
+  - { name: element_type, class: string, accepted_comparators: [eq, ne, gt, gte, lt, lte, between, is_null] }
+  - { name: folders, class: folder }
+  - { name: forecasts, class: array }
+  - { name: group, class: string }
+  - { name: has_ai_overview, class: boolean }
+  - { name: has_extra_ranks, class: boolean }
+  - { name: has_forecast_target, class: boolean }
+  - { name: has_forecasts, class: boolean }
+  - { name: highest_ranking_page, class: string }
+  - { name: highest_ranking_page_match, class: string }
+  - { name: is_first_occurrence_of_domain, class: boolean }
+  - { name: keyword, class: string }
+  - { name: keyword_options, class: array, value_set: [ignore_featured_snippet, ignore_local_results, ignore_in_share_of_voice, enable_autocorrect, ignored_domain] }
+  - { name: keywords, class: array }
+  - { name: landing_page_title, class: string }
+  - { name: landingpages, class: array, accepted_comparators: [any] }
+  - { name: llm_brand, class: array, llm: true }
+  - { name: llm_brand_count, class: numeric, llm: true }
+  - { name: llm_brand_count_change, class: numeric, llm: true }
+  - { name: llm_brand_mentions, class: numeric, llm: true }
+  - { name: llm_brand_mentions_change, class: numeric, llm: true }
+  - { name: llm_country_locale_id, class: numeric, accepted_comparators: [eq], llm: true }
+  - { name: llm_date_added, class: date, llm: true }
+  - { name: llm_folders, class: folder, llm: true }
+  - { name: llm_losers, class: boolean, llm: true }
+  - { name: llm_multiple_prompts, class: array, accepted_comparators: [any], llm: true }
+  - { name: llm_rank, class: numeric, llm: true }
+  - { name: llm_rank_change, class: numeric, llm: true }
+  - { name: llm_rank_compare, class: numeric, llm: true }
+  - { name: llm_search_engine, class: numeric, accepted_comparators: [eq], llm: true }
+  - { name: llm_sentiment, class: numeric, llm: true }
+  - { name: llm_source, class: array, llm: true }
+  - { name: llm_source_count, class: numeric, llm: true }
+  - { name: llm_source_count_change, class: numeric, llm: true }
+  - { name: llm_starred, class: boolean, llm: true }
+  - { name: llm_tags, class: array, llm: true }
+  - { name: llm_top_brand, class: array, llm: true }
+  - { name: llm_top_proximity_score, class: numeric, llm: true }
+  - { name: llm_top_proximity_score_change, class: numeric, llm: true }
+  - { name: llm_top_source, class: array, llm: true }
+  - { name: llm_visibility, class: numeric, llm: true }
+  - { name: llm_visibility_change, class: numeric, llm: true }
+  - { name: llm_web_search_rate, class: numeric, llm: true }
+  - { name: llm_web_search_rate_change, class: numeric, llm: true }
+  - { name: llm_winners, class: boolean, llm: true }
+  - { name: local_pack_rank, class: numeric }
+  - { name: local_pack_rank_change, class: numeric }
+  - { name: location, class: string }
+  - { name: max_ai_sov, class: numeric }
+  - { name: max_ai_traffic_value, class: numeric }
+  - { name: max_rank, class: numeric }
+  - { name: max_sov, class: numeric }
+  - { name: max_traffic_value, class: numeric }
+  - { name: multiple_keywords, class: array, accepted_comparators: [any] }
+  - { name: organic_traffic, class: numeric }
+  - { name: organic_traffic_change, class: numeric }
+  - { name: page_serp_features, class: array }
+  - { name: page_serp_features_owned, class: array }
+  - { name: page_serp_features_rank, class: numeric }
+  - { name: path, class: string }
+  - { name: pixels_from_top, class: numeric }
+  - { name: pixels_from_top_change, class: numeric }
+  - { name: prompt, class: string }
+  - { name: prompts, class: array }
+  - { name: rank, class: numeric }
+  - { name: rank_change, class: numeric }
+  - { name: rank_compare, class: numeric }
+  - { name: search_engine, class: numeric, accepted_comparators: [eq] }
+  - { name: search_intent, class: array }
+  - { name: search_type, class: numeric, accepted_comparators: [eq] }
+  - { name: search_volume, class: numeric }
+  - { name: share_of_voice, class: numeric }
+  - { name: share_of_voice_change, class: numeric }
+  - { name: starred, class: boolean }
+  - { name: subdomain, class: string }
+  - { name: tags, class: array }
+  - { name: title_contains_keyword, class: boolean, accepted_comparators: [eq] }
+  - { name: top_domain, class: array }
+  - { name: traffic_value, class: numeric }
+  - { name: traffic_value_change, class: numeric }
+  - { name: url_changed, class: boolean }

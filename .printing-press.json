@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-20T10:57:10.48932Z",
+  "printing_press_version": "4.9.0",
+  "api_name": "accuranker",
+  "display_name": "Accuranker",
+  "cli_name": "accuranker-pp-cli",
+  "owner": "lasse-jellum",
+  "printer": "nytafar",
+  "printer_name": "Lasse Jellum",
+  "spec_format": "openapi3",
+  "spec_checksum": "sha256:3703a306e1334b097490e803d38621f1a3a5165c0ad21caa311fab4018a3ebe3",
+  "run_id": "20260520-105352",
+  "mcp_binary": "accuranker-pp-mcp",
+  "mcp_tool_count": 39,
+  "mcp_ready": "full",
+  "api_version": "4.0.0",
+  "auth_type": "api_key",
+  "auth_env_vars": [
+    "ACCURANKER_API_TOKEN"
+  ],
+  "auth_key_url": "https://app.accuranker.com/app/profile",
+  "novel_features": [
+    {
+      "name": "Typed v2-aligned mirror into local SQLite",
+      "command": "mirror",
+      "description": "Sync a domain's data into typed SQLite tables that match schema/model.yaml exactly — keywords, keyword_ranks, domain_history, etc. AccuRanker's mandatory fields= parameter is auto-filled per resource. Resumable across runs."
+    },
+    {
+      "name": "NDJSON dump with auto-chunked window",
+      "command": "dump",
+      "description": "Stream historical rank or domain-history data over any window. The CLI walks 100-day slices internally and dedups, emitting one record per line."
+    },
+    {
+      "name": "Machine-readable schema for v2 mirror",
+      "command": "schema",
+      "description": "Print the canonical data shape — every resource, field, filter dimension, comparator legality, and sync hint — as JSON or Postgres DDL."
+    },
+    {
+      "name": "Discoverable filter dimensions",
+      "command": "filters list",
+      "description": "List all 100+ filter dimensions AccuRanker accepts in dynamic filter expressions, with type class and accepted comparators."
+    },
+    {
+      "name": "SERP-feature gain/loss delta",
+      "command": "serp-features delta",
+      "description": "Partition a domain's keywords into gained / lost / held for any SERP feature (AI Overview, featured snippet, local pack, etc.) over a date window."
+    },
+    {
+      "name": "Cannibalization detection",
+      "command": "cannibalize",
+      "description": "Flag keywords where multiple URLs from the same domain rank simultaneously, or where the highest-ranking page flips across the window."
+    },
+    {
+      "name": "Decay opportunity finder",
+      "command": "decay",
+      "description": "Find keywords whose rank is getting worse while their search volume is climbing — the classic 'losing ground on rising demand' set."
+    },
+    {
+      "name": "Keyword spec diff before apply",
+      "command": "keywords-diff",
+      "description": "Compare a local CSV/NDJSON keyword spec against AccuRanker's current keyword list. Emits adds/removes/updates without writing."
+    },
+    {
+      "name": "Push local mirror to remote Postgres",
+      "command": "push",
+      "description": "Upsert every table from the local SQLite mirror into a remote Postgres schema using DDL derived from schema/model.yaml. The bridge to a downstream analytics layer."
+    }
+  ]
+}

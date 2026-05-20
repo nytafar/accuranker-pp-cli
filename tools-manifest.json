@@ -1,0 +1,1707 @@
+{
+  "api_name": "accuranker",
+  "base_url": "https://app.accuranker.com",
+  "description": "Unified AccuRanker Read + Write API v4. Sourced from app.accuranker.com/api/read-docs and /api/write-docs (Swagger 2.0 + OpenAPI 3.0 originals). Includes 21 endpoints across accounts, brands, prompts, domains, keywords, ranks, landing pages, tags, groups, async keyword jobs.\n\n**Key behaviours:**\n- Read endpoints REQUIRE the `fields` query parameter (GraphQL-like dot notation) or responses are empty objects.\n- `period_from` and `period_to` query parameters scope historical data and are capped at 100 days per request.\n- Dynamic filter DSL is available via POST body on list endpoints (100+ filter dimensions, 13+ comparators).\n- Rate limits: 100 req/min, max 4 concurrent connections per IP.\n- Plan-tier gates: LLM endpoints (brands/prompts) and overview endpoints return 200 with `{\"error\": ...}` or `{\"message\": ...}` when the caller's plan does not include them.",
+  "mcp_ready": "full",
+  "http_transport": "standard",
+  "auth": {
+    "type": "api_key",
+    "header": "Authorization",
+    "format": "Token {ACCURANKER_API_TOKEN}",
+    "in": "header",
+    "env_vars": [
+      "ACCURANKER_API_TOKEN"
+    ],
+    "env_var_specs": [
+      {
+        "name": "ACCURANKER_API_TOKEN",
+        "kind": "per_call",
+        "required": true,
+        "sensitive": true,
+        "inferred": true
+      }
+    ],
+    "key_url": "https://app.accuranker.com/app/profile"
+  },
+  "required_headers": [],
+  "tools": [
+    {
+      "name": "accounts_create",
+      "description": "POST with filters in body is equivalent to GET with filters. This enables complex filter queries without URL length limitations. Expected body format: { 'filters': [ {'name': 'rank', 'comparator': 'lt', 'value': 10}, {'name': 'keyword', 'comparator': 'contains', 'value': 'test'} ], 'operator': 'and' }. Optional: fields, period_from, period_to (plus 4 more). Returns the new Organization.",
+      "method": "POST",
+      "path": "/api/v4/accounts/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "GraphQL-like field projection (dot notation). EXAMPLE: 'id,keyword,ranks.rank,ranks.created_at'. Without this parameter the response items are empty objects {}."
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window start (YYYY-MM-DD, inclusive). Pair with period_to. Max 100 days between from/to."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window end (YYYY-MM-DD, inclusive). Pair with period_from. Max 100 days between from/to."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "api_filters",
+          "type": "array",
+          "location": "body",
+          "description": "Api filters"
+        },
+        {
+          "name": "id",
+          "type": "int",
+          "location": "body",
+          "description": "Id"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "The name of your account/department. This will show up on reports."
+        }
+      ]
+    },
+    {
+      "name": "accounts_get",
+      "description": "Get. Required: id. Optional: fields, period_from, period_to (plus 1 more). Returns the Organization.",
+      "method": "GET",
+      "path": "/api/v4/accounts/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this organization.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window start (YYYY-MM-DD, inclusive). Pair with period_to. Max 100 days between from/to."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window end (YYYY-MM-DD, inclusive). Pair with period_from. Max 100 days between from/to."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        }
+      ]
+    },
+    {
+      "name": "accounts_list",
+      "description": "List. Optional: limit, offset, fields (plus 3 more). Returns the Organization.",
+      "method": "GET",
+      "path": "/api/v4/accounts/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of results to return per page."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window start (YYYY-MM-DD, inclusive). Pair with period_to. Max 100 days between from/to."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window end (YYYY-MM-DD, inclusive). Pair with period_from. Max 100 days between from/to."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        }
+      ]
+    },
+    {
+      "name": "brand_create",
+      "description": "This endpoint creates a new brand for your group. A brand can only be created on groups or subaccounts authorized by the token. Curl example: curl -X POST -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain':'DOMAIN_URL','display_name':'BRAND_NAME','brand_list':['BRAND'],'default_countrylocale':'en-GB','group_id':YOUR_GROUP_ID}' https://app.accuranker.com/api/v4/brand/. Required: brand_list, default_countrylocale, display_name, domain, group_id. Optional: exact_match (default: false). Returns the new BrandSchemaOut.",
+      "method": "POST",
+      "path": "/api/v4/brand/",
+      "params": [
+        {
+          "name": "brand_list",
+          "type": "array",
+          "location": "body",
+          "description": "List of brands to monitor",
+          "required": true
+        },
+        {
+          "name": "default_countrylocale",
+          "type": "string",
+          "location": "body",
+          "description": "Two letters combination of country and language. Example: en-GB (for english in Great Britain)",
+          "required": true
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "location": "body",
+          "description": "This will the displayed name in the app.",
+          "required": true
+        },
+        {
+          "name": "domain",
+          "type": "string",
+          "location": "body",
+          "description": "No http:// or www. You can enter a path that must be found. Eg. example.com/path. Search...",
+          "required": true
+        },
+        {
+          "name": "exact_match",
+          "type": "bool",
+          "location": "body",
+          "description": "Only include results where the Brand found is an exact match to what is entered in Brand field"
+        },
+        {
+          "name": "group_id",
+          "type": "int",
+          "location": "body",
+          "description": "Client (group) id",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "brand_delete",
+      "description": "This endpoint deletes a brand and all underlying prompts - hence use this endpoint with caution. Curl example: curl -X DELETE -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/brand/YOUR_BRAND_ID. Required: brand_id. Returns the Message. Destructive.",
+      "method": "DELETE",
+      "path": "/api/v4/brand/{brand_id}",
+      "params": [
+        {
+          "name": "brand_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the brand you want to delete",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "brand_update",
+      "description": "This endpoint updates a brand in your group. All fields are optional. If you leave a field out, the value will not be updated. Curl example: curl -X PUT -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain':'BRAND_URL', 'display_name': 'Brand display name'}' https://app.accuranker.com/api/v4/brand/YOUR_BRAND_ID. Required: brand_id. Optional: brand_list, default_countrylocale, display_name (plus 3 more). Returns the updated BrandSchemaOut.",
+      "method": "PUT",
+      "path": "/api/v4/brand/{brand_id}",
+      "params": [
+        {
+          "name": "brand_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the brand you want to update",
+          "required": true
+        },
+        {
+          "name": "brand_list",
+          "type": "string",
+          "location": "body",
+          "description": "The name(s) of the brand/company your want to monitor."
+        },
+        {
+          "name": "default_countrylocale",
+          "type": "string",
+          "location": "body",
+          "description": "Two letters combination of country and language. Example: en-GB (for english in Great Britain)"
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "location": "body",
+          "description": "This will the displayed name in the app."
+        },
+        {
+          "name": "domain",
+          "type": "string",
+          "location": "body",
+          "description": "No http:// or www. You can enter a path that must be found. Eg. example.com/path. Search..."
+        },
+        {
+          "name": "exact_match",
+          "type": "string",
+          "location": "body",
+          "description": "Only include results where the Brand found is an exact match to what is entered in Brand field"
+        },
+        {
+          "name": "group_id",
+          "type": "string",
+          "location": "body",
+          "description": "Id of the group the brand should belong to."
+        }
+      ]
+    },
+    {
+      "name": "brands_get",
+      "description": "Get. Required: id. Optional: fields, period_from, period_to (plus 1 more). Returns the DomainLlm.",
+      "method": "GET",
+      "path": "/api/v4/brands/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this domain name.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        }
+      ]
+    },
+    {
+      "name": "brands_list",
+      "description": "List. Optional: limit, offset, fields (plus 3 more). Returns the DomainLlm.",
+      "method": "GET",
+      "path": "/api/v4/brands/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of results to return per page."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        }
+      ]
+    },
+    {
+      "name": "brands_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: filters. Optional: fields, period_from, period_to (plus 2 more). Returns the new DomainLlm.",
+      "method": "POST",
+      "path": "/api/v4/brands/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "brands_prompts_get",
+      "description": "Get. Required: id, brands_pk. Optional: fields, period_from, period_to (plus 1 more). Returns the Prompt.",
+      "method": "GET",
+      "path": "/api/v4/brands/{brands_pk}/prompts/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this prompt.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "brands_pk",
+          "type": "string",
+          "location": "path",
+          "description": "brands_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "brands_prompts_list",
+      "description": "List. Required: brands_pk. Optional: limit, offset, fields (plus 3 more). Returns the Prompt.",
+      "method": "GET",
+      "path": "/api/v4/brands/{brands_pk}/prompts/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of keywords. For requests containing full_serp, the limit is 500 total keyword days...."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "brands_pk",
+          "type": "string",
+          "location": "path",
+          "description": "brands_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "brands_prompts_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: brands_pk, filters. Optional: fields, period_from, period_to (plus 3 more). Returns the new Prompt.",
+      "method": "POST",
+      "path": "/api/v4/brands/{brands_pk}/prompts/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of keywords. For requests containing full_serp, the limit is 500 total keyword days...."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "brands_pk",
+          "type": "string",
+          "location": "path",
+          "description": "brands_pk",
+          "required": true
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "domain_create",
+      "description": "This endpoint creates a new domain for your group. A domain can only be created on groups or subaccounts authorized by the token. Set primary=true for a SearchSetting object you want to be primary for the domain. If the primary value is not set for any SearchSetting object, the first will be assigned as primary. Curl example: curl -X POST -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain':'DOMAIN_URL','default_searchsettings_names':[{'countrylocale':'en-GB','search_engine_names':[{'search_engine':'Google','search_type_names':['Desktop']}],'locations':['Buckingham Palace, London']}],'group_id':YOUR_GROUP_ID}' https://app.accuranker.com/api/v4/domain/. Required: default_searchsettings_names, domain, group_id. Optional: display_name, exact_match (default: false), facebook_profile (plus 7 more). Returns the new DomainSchemaOut.",
+      "method": "POST",
+      "path": "/api/v4/domain/",
+      "params": [
+        {
+          "name": "default_searchsettings_names",
+          "type": "array",
+          "location": "body",
+          "description": "List of search settings that will be default for keywords on this domain.",
+          "required": true
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "location": "body",
+          "description": "\u003cstrong\u003eOptional.\u003c/strong\u003e If set this will display instead of the domain name. Automatically set for YouTube videos and channels."
+        },
+        {
+          "name": "domain",
+          "type": "string",
+          "location": "body",
+          "description": "No http:// or www. You can enter a path that must be found. Eg. example.com/path. Search...",
+          "required": true
+        },
+        {
+          "name": "exact_match",
+          "type": "bool",
+          "location": "body",
+          "description": "Only include results where the URL found is an exact match to what is entered in domain name"
+        },
+        {
+          "name": "facebook_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your Facebook profile."
+        },
+        {
+          "name": "google_business_name_list",
+          "type": "string",
+          "location": "body",
+          "description": "For some local results Google does not include a link to the website. To make sure we can still find the domain on the search result page, please enter the exact name of the Google Business page here."
+        },
+        {
+          "name": "group_id",
+          "type": "int",
+          "location": "body",
+          "description": "Id of the group the domain should belong to.",
+          "required": true
+        },
+        {
+          "name": "include_subdomains",
+          "type": "bool",
+          "location": "body",
+          "description": "Include results from sub.domain.com."
+        },
+        {
+          "name": "instagram_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your Instagram profile."
+        },
+        {
+          "name": "linkedin_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your LinkedIn profile."
+        },
+        {
+          "name": "share_of_voice_percentage",
+          "type": "bool",
+          "location": "body",
+          "description": "Show Share of Voice in percentage for this domain"
+        },
+        {
+          "name": "tiktok_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your TikTok profile and videos."
+        },
+        {
+          "name": "x_handle",
+          "type": "string",
+          "location": "body",
+          "description": "X (Twitter) handle for the domain."
+        }
+      ]
+    },
+    {
+      "name": "domain_delete",
+      "description": "This endpoint deletes a domain and all underlying keywordss - hence use this endpoint with caution. Curl example: curl -X DELETE -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/domain/YOUR_DOMAIN_ID. Required: domain_id. Returns the Message. Destructive.",
+      "method": "DELETE",
+      "path": "/api/v4/domain/{domain_id}",
+      "params": [
+        {
+          "name": "domain_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the domain you want to delete",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domain_update",
+      "description": "This endpoint updates a domain in your group. All fields are optional. If you leave a field out, the value will not be updated. The exception is sub-fields to default_searchsettings_names: the entire default_searchsettings_names objects will overwrite whatever exists on the domain. Set primary=true for a SearchSetting object you want to be primary for the domain. If the primary value is not set for any SearchSetting object, the first will be assigned as primary. Curl example: curl -X PUT -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain':'DOMAIN_URL', 'display_name': 'Domain display name'}' https://app.accuranker.com/api/v4/domain/YOUR_DOMAIN_ID. Required: domain_id. Optional: default_searchsettings_names, display_name, domain (plus 10 more). Returns the updated DomainSchemaOut.",
+      "method": "PUT",
+      "path": "/api/v4/domain/{domain_id}",
+      "params": [
+        {
+          "name": "domain_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the domain you want to update",
+          "required": true
+        },
+        {
+          "name": "default_searchsettings_names",
+          "type": "string",
+          "location": "body",
+          "description": "List of search settings that will be default for keywords on this domain."
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "location": "body",
+          "description": "\u003cstrong\u003eOptional.\u003c/strong\u003e If set this will display instead of the domain name. Automatically set for YouTube videos and channels."
+        },
+        {
+          "name": "domain",
+          "type": "string",
+          "location": "body",
+          "description": "No http:// or www. You can enter a path that must be found. Eg. example.com/path. Search..."
+        },
+        {
+          "name": "exact_match",
+          "type": "string",
+          "location": "body",
+          "description": "Only include results where the URL found is an exact match to what is entered in domain name"
+        },
+        {
+          "name": "facebook_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your Facebook profile."
+        },
+        {
+          "name": "google_business_name_list",
+          "type": "string",
+          "location": "body",
+          "description": "For some local results Google does not include a link to the website. To make sure we can still find the domain on the search result page, please enter the exact name of the Google Business page here."
+        },
+        {
+          "name": "group_id",
+          "type": "string",
+          "location": "body",
+          "description": "Id of the group the domain should belong to."
+        },
+        {
+          "name": "include_subdomains",
+          "type": "string",
+          "location": "body",
+          "description": "Include results from sub.domain.com."
+        },
+        {
+          "name": "instagram_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your Instagram profile."
+        },
+        {
+          "name": "linkedin_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your LinkedIn profile."
+        },
+        {
+          "name": "share_of_voice_percentage",
+          "type": "string",
+          "location": "body",
+          "description": "Show Share of Voice in percentage for this domain"
+        },
+        {
+          "name": "tiktok_profile",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your TikTok profile and videos."
+        },
+        {
+          "name": "x_handle",
+          "type": "string",
+          "location": "body",
+          "description": "Enable ranking of your tweets and Twitter profile."
+        }
+      ]
+    },
+    {
+      "name": "domains_get",
+      "description": "Get. Required: id. Optional: fields, period_from, period_to (plus 1 more). Returns the Domain.",
+      "method": "GET",
+      "path": "/api/v4/domains/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this domain name.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        }
+      ]
+    },
+    {
+      "name": "domains_list",
+      "description": "List. Optional: limit, offset, fields (plus 3 more). Returns the Domain.",
+      "method": "GET",
+      "path": "/api/v4/domains/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of results to return per page."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        }
+      ]
+    },
+    {
+      "name": "domains_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: filters. Optional: fields, period_from, period_to (plus 2 more). Returns the new Domain.",
+      "method": "POST",
+      "path": "/api/v4/domains/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "domains_keywords_get",
+      "description": "Get. Required: id, domain_pk. Optional: fields, period_from, period_to (plus 1 more). Returns the Keyword.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/keywords/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this keyword.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_keywords_get-html",
+      "description": "Get html. Required: domain_pk, keyword_pk, search_date. Optional: fields, period_from, period_to (plus 1 more). Returns the Serps.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/keywords/{keyword_pk}/ranks/{search_date}/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "GraphQL-like field projection (dot notation). EXAMPLE: 'id,keyword,ranks.rank,ranks.created_at'. Without this parameter the response items are empty objects {}."
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window start (YYYY-MM-DD, inclusive). Pair with period_to. Max 100 days between from/to."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Historical window end (YYYY-MM-DD, inclusive). Pair with period_from. Max 100 days between from/to."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        },
+        {
+          "name": "keyword_pk",
+          "type": "string",
+          "location": "path",
+          "description": "keyword_pk",
+          "required": true
+        },
+        {
+          "name": "search_date",
+          "type": "string",
+          "location": "path",
+          "description": "search_date",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_keywords_list",
+      "description": "List. Required: domain_pk. Optional: limit, offset, fields (plus 3 more). Returns the Keyword.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/keywords/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of keywords. For requests containing full_serp, the limit is 500 total keyword days...."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_keywords_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: domain_pk, filters. Optional: fields, period_from, period_to (plus 3 more). Returns the new Keyword.",
+      "method": "POST",
+      "path": "/api/v4/domains/{domain_pk}/keywords/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of keywords. For requests containing full_serp, the limit is 500 total keyword days...."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "domains_landing-pages_get",
+      "description": "Get. Required: id, domain_pk. Optional: fields, period_from, period_to (plus 1 more). Returns the LandingPageSerializerSchema.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/landing_pages/{id}/",
+      "params": [
+        {
+          "name": "id",
+          "type": "int",
+          "location": "path",
+          "description": "A unique integer value identifying this landing page.",
+          "required": true
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_landing-pages_list",
+      "description": "List. Required: domain_pk. Optional: limit, offset, fields (plus 3 more). Returns the LandingPageSerializerSchema.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/landing_pages/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of results to return per page."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_landing-pages_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: domain_pk, filters. Optional: fields, period_from, period_to (plus 2 more). Returns the new LandingPageSerializerSchema.",
+      "method": "POST",
+      "path": "/api/v4/domains/{domain_pk}/landing_pages/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "domains_tags_list",
+      "description": "List. Required: domain_pk. Optional: limit, offset, fields (plus 3 more). Returns the Tag.",
+      "method": "GET",
+      "path": "/api/v4/domains/{domain_pk}/tags/",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "query",
+          "description": "Number of results to return per page."
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "query",
+          "description": "The initial index from which to return the results."
+        },
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "The ID of a saved API filter/segment. You can find your API filters at /app/integrations/api."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "domains_tags_list-with-filters",
+      "description": "POST alternative to GET with filters in request body. Useful for complex filter queries. Required: domain_pk, filters. Optional: fields, period_from, period_to (plus 2 more). Returns the new Tag.",
+      "method": "POST",
+      "path": "/api/v4/domains/{domain_pk}/tags/",
+      "params": [
+        {
+          "name": "fields",
+          "type": "string",
+          "location": "query",
+          "description": "Comma separated string (`?"
+        },
+        {
+          "name": "period_from",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "period_to",
+          "type": "string",
+          "location": "query",
+          "description": "Date in format: YYYY-MM-DD."
+        },
+        {
+          "name": "filter_id",
+          "type": "int",
+          "location": "query",
+          "description": "Saved API-filter ID (segments marked as 'API filter' in AccuRanker \u003e Integrations \u003e API)."
+        },
+        {
+          "name": "domain_pk",
+          "type": "string",
+          "location": "path",
+          "description": "domain_pk",
+          "required": true
+        },
+        {
+          "name": "filters",
+          "type": "array",
+          "location": "body",
+          "description": "Array of filter conditions",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "location": "body",
+          "description": "Logical operator to combine filters"
+        }
+      ]
+    },
+    {
+      "name": "group_create",
+      "description": "This endpoint creates a new group on your account. The group can only be created on accounts or subaccounts authorized by the token. Curl example: curl -X POST -H 'Authorization: Token YOUR_API_TOKEN' -d ''{'name':'Group name','account_id':YOUR_ACCOUNT_ID}'' https://app.accuranker.com/api/v4/group/. Required: account_id, name. Returns the new GroupOut.",
+      "method": "POST",
+      "path": "/api/v4/group/",
+      "params": [
+        {
+          "name": "account_id",
+          "type": "int",
+          "location": "body",
+          "description": "Id of the account you want to the group to belong to.",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Name of the group",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "group_delete",
+      "description": "This endpoint deletes a group and all underlying domains and keywords - hence use this endpoint with caution. Curl example: curl -X DELETE -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/group/YOUR_GROUP_ID. Required: group_id. Returns the Message. Destructive.",
+      "method": "DELETE",
+      "path": "/api/v4/group/{group_id}",
+      "params": [
+        {
+          "name": "group_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the group you want to delete",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "group_update",
+      "description": "This endpoint updates a group for your account. Only groups on accounts or subaccounts authorized by the token can be updated. All fields are optional. If you leave a field out, the value will not be updated. Curl example: curl -X PUT -H 'Authorization: Token YOUR_API_TOKEN' -d ''{'name':'Group name','account_id':YOUR_ACCOUNT_ID}'' https://app.accuranker.com/api/v4/group/YOUR_GROUP_ID. Required: group_id. Optional: account_id, name. Returns the updated GroupUpdateOut.",
+      "method": "PUT",
+      "path": "/api/v4/group/{group_id}",
+      "params": [
+        {
+          "name": "group_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the group you want to update",
+          "required": true
+        },
+        {
+          "name": "account_id",
+          "type": "string",
+          "location": "body",
+          "description": "Id of the account you want to move the group to."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Name of the group"
+        }
+      ]
+    },
+    {
+      "name": "keyword_create",
+      "description": "With this endpoint, you can create one or more keywords on a domain. Keywords can only be created on domains authorized by the token on accounts that allow keyword exceedings. Go to https://app.accuranker.com/app/account to check if it is enable. If no search settings are provided, the default search settings from the domain will be used. This endpoint starts a job to import your keyword(s) - If you try to add existing keywords, these will be ignored. The response header 'Location' points to a specific endpoint for monitoring the progress status of your keyword job. Curl example: curl -X POST -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain_id': YOUR_DOMAIN_ID, 'keywords':['keyword 1', 'keyword 2']}' https://app.accuranker.com/api/v4/keyword/. Required: domain_id, keywords. Optional: description, enable_autocorrect (default: false), ignore_featured_snippet (default: false) (plus 5 more). Returns the new Message.",
+      "method": "POST",
+      "path": "/api/v4/keyword/",
+      "params": [
+        {
+          "name": "description",
+          "type": "string",
+          "location": "body",
+          "description": "Description of the keyword"
+        },
+        {
+          "name": "domain_id",
+          "type": "int",
+          "location": "body",
+          "description": "Id of the domain you want to add the keywords to",
+          "required": true
+        },
+        {
+          "name": "enable_autocorrect",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable autocorrect for searches on this keyword"
+        },
+        {
+          "name": "ignore_featured_snippet",
+          "type": "bool",
+          "location": "body",
+          "description": "Whether or not ranking on this keyword will ignore featured snippets."
+        },
+        {
+          "name": "ignore_in_share_of_voice",
+          "type": "bool",
+          "location": "body",
+          "description": "Whether or not this keyword should be ignored in aggregated share of voice"
+        },
+        {
+          "name": "ignore_local_results",
+          "type": "bool",
+          "location": "body",
+          "description": "Whether or not ranking on this keyword will ignore local results."
+        },
+        {
+          "name": "keywords",
+          "type": "array",
+          "location": "body",
+          "description": "List of keyword to add to the domain",
+          "required": true
+        },
+        {
+          "name": "searchsettings",
+          "type": "array",
+          "location": "body",
+          "description": "List of search settings to use on this keyword"
+        },
+        {
+          "name": "starred",
+          "type": "bool",
+          "location": "body",
+          "description": "Mark the keyword as starred"
+        },
+        {
+          "name": "tags",
+          "type": "array",
+          "location": "body",
+          "description": "List of tags for the keyword. Used for filtering or grouping"
+        }
+      ]
+    },
+    {
+      "name": "keyword_delete",
+      "description": "This endpoint deletes is used to delete a keyword - hence you should use this with caution. Curl example: curl -X DELETE -H 'Authorization: Token YOUR_API_TOKEN' -d '{'keyword_ids':[YOUR_KEYWORD_IDS]}' https://app.accuranker.com/api/v4/keyword/. Required: keyword_ids. Returns the Message. Destructive.",
+      "method": "DELETE",
+      "path": "/api/v4/keyword/",
+      "params": [
+        {
+          "name": "keyword_ids",
+          "type": "array",
+          "location": "body",
+          "description": "Ids of the keyword you want to delete",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "keyword_update",
+      "description": "This endpoint updates settings for the given keywords. Only keywords on domains authorized by the token can be updated. Curl example: curl -X PUT -H 'Authorization: Token YOUR_API_TOKEN' -d '{'keyword_ids':[YOUR_KEYWORD_IDS]}' https://app.accuranker.com/api/v4/keyword/. Required: keyword_ids. Optional: description, domain_id, enable_autocorrect (plus 5 more). Returns the updated Message.",
+      "method": "PUT",
+      "path": "/api/v4/keyword/",
+      "params": [
+        {
+          "name": "description",
+          "type": "string",
+          "location": "body",
+          "description": "Description of the keyword"
+        },
+        {
+          "name": "domain_id",
+          "type": "string",
+          "location": "body",
+          "description": "Id of the domain you want to move the keywords to"
+        },
+        {
+          "name": "enable_autocorrect",
+          "type": "string",
+          "location": "body",
+          "description": "Enable autocorrect for searches on this keyword"
+        },
+        {
+          "name": "ignore_featured_snippet",
+          "type": "string",
+          "location": "body",
+          "description": "Whether or not ranking on this keyword will ignore featured snippets."
+        },
+        {
+          "name": "ignore_in_share_of_voice",
+          "type": "string",
+          "location": "body",
+          "description": "Whether or not this keyword should be ignored in aggregated share of voice"
+        },
+        {
+          "name": "ignore_local_results",
+          "type": "string",
+          "location": "body",
+          "description": "Whether or not ranking on this keyword will ignore local results."
+        },
+        {
+          "name": "keyword_ids",
+          "type": "string",
+          "location": "body",
+          "description": "List of keyword to update",
+          "required": true
+        },
+        {
+          "name": "starred",
+          "type": "string",
+          "location": "body",
+          "description": "Mark the keyword as starred"
+        },
+        {
+          "name": "tags",
+          "type": "string",
+          "location": "body",
+          "description": "List of tags for the keyword. Used for filtering or grouping. Updating tags will overwrite existing tags on the keyword."
+        }
+      ]
+    },
+    {
+      "name": "overview_get-group-and-domains",
+      "description": "This endpoint returns a list of all accounts, groups and domains for your account. The list is based on the token provided. If you are looking for account_id, group_id or domain_id use this endpoint. Curl example: curl -X GET -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/overview/group_domains. Optional: include_subaccounts (default: false).",
+      "method": "GET",
+      "path": "/api/v4/overview/group_domains",
+      "params": [
+        {
+          "name": "include_subaccounts",
+          "type": "bool",
+          "location": "query",
+          "description": "If true, it returns the accounts, groups, and domains for your subaccounts and your main account."
+        }
+      ]
+    },
+    {
+      "name": "overview_get-keyword-for-domain",
+      "description": "This endpoint returns a list of all your keywords on the provided domain. Curl example: curl -X GET -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/overview/keywords_for_domain/YOUR_DOMAIN_ID?keyword_contains=test. Required: domain_id. Optional: keyword_contains.",
+      "method": "GET",
+      "path": "/api/v4/overview/keywords_for_domain/{domain_id}",
+      "params": [
+        {
+          "name": "domain_id",
+          "type": "int",
+          "location": "path",
+          "description": "Id of the domain to get keywords for.",
+          "required": true
+        },
+        {
+          "name": "keyword_contains",
+          "type": "string",
+          "location": "query",
+          "description": "(Optional) Only returns keywords that contain the value (case-insensitive)."
+        }
+      ]
+    },
+    {
+      "name": "prompt_create",
+      "description": "With this endpoint, you can create one or more prompts on a brand. Prompts can only be created on brands authorized by the token. If no countrylocale is provided, the default countrylocale from the brand will be used. This endpoint starts a job to import your prompt(s) - If you try to add existing prompts, these will be ignored. The response header 'Location' points to a specific endpoint for monitoring the progress status of your prompt job. Curl example: curl -X POST -H 'Authorization: Token YOUR_API_TOKEN' -d '{'domain_id': YOUR_DOMAIN_ID, 'prompts':['prompt 1', 'prompt 2']}' https://app.accuranker.com/api/v4/prompt/. Required: domain_id, prompts. Optional: countrylocale, description, starred (default: false) (plus 1 more). Returns the new Message.",
+      "method": "POST",
+      "path": "/api/v4/prompt/",
+      "params": [
+        {
+          "name": "countrylocale",
+          "type": "string",
+          "location": "body",
+          "description": "Two letters combination of country and language. Defaults to the domain's default countrylocale if omitted. Example: en-GB (for english in Great Britain)"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "location": "body",
+          "description": "Description of the prompt"
+        },
+        {
+          "name": "domain_id",
+          "type": "int",
+          "location": "body",
+          "description": "Id of the domain you want to add the prompts to",
+          "required": true
+        },
+        {
+          "name": "prompts",
+          "type": "array",
+          "location": "body",
+          "description": "List of prompts to add to the domain",
+          "required": true
+        },
+        {
+          "name": "starred",
+          "type": "bool",
+          "location": "body",
+          "description": "Mark the prompt as starred"
+        },
+        {
+          "name": "tags",
+          "type": "array",
+          "location": "body",
+          "description": "List of tags for the prompt. Used for filtering or grouping"
+        }
+      ]
+    },
+    {
+      "name": "prompt_delete",
+      "description": "This endpoint deletes is used to delete a prompt - hence you should use this with caution. Curl example: curl -X DELETE -H 'Authorization: Token YOUR_API_TOKEN' -d '{'prompt_ids':[YOUR_PROMPT_IDS]}' https://app.accuranker.com/api/v4/prompt/. Required: prompt_ids. Returns the Message. Destructive.",
+      "method": "DELETE",
+      "path": "/api/v4/prompt/",
+      "params": [
+        {
+          "name": "prompt_ids",
+          "type": "array",
+          "location": "body",
+          "description": "Ids of the prompts you want to delete",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "prompt_update",
+      "description": "This endpoint updates settings for the given prompts. Only prompts on domains authorized by the token can be updated. Curl example: curl -X PUT -H 'Authorization: Token YOUR_API_TOKEN' -d '{'prompt_ids':[YOUR_PROMPT_IDS]}' https://app.accuranker.com/api/v4/prompt/. Required: prompt_ids. Optional: description, domain_id, starred (plus 1 more). Returns the updated Message.",
+      "method": "PUT",
+      "path": "/api/v4/prompt/",
+      "params": [
+        {
+          "name": "description",
+          "type": "string",
+          "location": "body",
+          "description": "Description of the prompt"
+        },
+        {
+          "name": "domain_id",
+          "type": "string",
+          "location": "body",
+          "description": "Id of the brand you want to move the prompt to"
+        },
+        {
+          "name": "prompt_ids",
+          "type": "string",
+          "location": "body",
+          "description": "List of prompt to update",
+          "required": true
+        },
+        {
+          "name": "starred",
+          "type": "string",
+          "location": "body",
+          "description": "Mark the prompt as starred"
+        },
+        {
+          "name": "tags",
+          "type": "string",
+          "location": "body",
+          "description": "List of tags for the prompt. Used for filtering or grouping. Updating tags will overwrite existing tags on the prompt."
+        }
+      ]
+    },
+    {
+      "name": "status_keyword-job",
+      "description": "Return status of an keyword job, given a job ID. To start a job call POST or PUT /keyword. Any response code other than 200 means the job is not finished or failed. Response code 200 means the job is finished and the keywords should be available on your domain. Curl example: curl -X GET -H 'Authorization: Token YOUR_API_TOKEN' https://app.accuranker.com/api/v4/status/keyword_job/YOUR_JOB_ID. Required: job_id. Returns the Message.",
+      "method": "GET",
+      "path": "/api/v4/status/keyword_job/{job_id}",
+      "params": [
+        {
+          "name": "job_id",
+          "type": "string",
+          "location": "path",
+          "description": "Job id",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

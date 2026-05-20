@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.3",
+  "name": "accuranker-pp-mcp",
+  "display_name": "Accuranker",
+  "version": "4.9.0",
+  "description": "Accuranker API surface as MCP tools.",
+  "author": {
+    "name": "CLI Printing Press"
+  },
+  "license": "Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "bin/accuranker-pp-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/bin/accuranker-pp-mcp",
+      "args": [],
+      "env": {
+        "ACCURANKER_API_TOKEN": "${user_config.accuranker_api_token}"
+      }
+    }
+  },
+  "user_config": {
+    "accuranker_api_token": {
+      "type": "string",
+      "title": "ACCURANKER_API_TOKEN",
+      "description": "Sets ACCURANKER_API_TOKEN for the Accuranker MCP server. Get a credential from https://app.accuranker.com/app/profile.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  }
+}

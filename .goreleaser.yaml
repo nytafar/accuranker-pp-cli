@@ -1,0 +1,51 @@
+version: 2
+project_name: accuranker-pp-cli
+changelog:
+  disable: true
+builds:
+  - id: accuranker-pp-cli
+    main: ./cmd/accuranker-pp-cli
+    binary: accuranker-pp-cli
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X accuranker-pp-cli/internal/cli.version={{ .Version }}
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+      - windows_amd64
+      - windows_arm64
+  - id: accuranker-pp-mcp
+    main: ./cmd/accuranker-pp-mcp
+    binary: accuranker-pp-mcp
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+      - windows_amd64
+      - windows_arm64
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+checksum:
+  name_template: checksums.txt
+brews:
+  - name: accuranker-pp-cli
+    repository:
+      owner: lasse-jellum
+      name: homebrew-tap
+    homepage: "https://github.com/lasse-jellum/accuranker-pp-cli"
+    description: "The first real CLI for AccuRanker — built to feed your warehouse and your AI agents, not to ship dashboards."
+    install: |
+      bin.install "accuranker-pp-cli"
+      bin.install "accuranker-pp-mcp"
