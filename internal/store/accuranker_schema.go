@@ -74,6 +74,42 @@ func PostgresDDL(model *schema.Model) []string {
 	return stmts
 }
 
+// PostgresComments emits COMMENT ON TABLE / COMMENT ON COLUMN statements from
+// model.yaml descriptions. Table comments come from the resource description
+// (always present); column comments are emitted only for columns that carry a
+// `description:` in model.yaml. Grain and watermark, when set, are appended to
+// the table comment so the catalog survives even in a comments-only pipeline.
+//
+// PATCH(amend-2026-07-07: catalog seeding — spec F5) — consumed by
+// `schema --format postgres-ddl --comments`.
+func PostgresComments(model *schema.Model) []string {
+	stmts := make([]string, 0, len(model.Resources))
+	for i := range model.Resources {
+		r := &model.Resources[i]
+		comment := strings.TrimSpace(r.Description)
+		if r.Grain != "" {
+			comment += " Grain: " + r.Grain + "."
+		}
+		if r.Watermark != "" {
+			comment += " Watermark column: " + r.Watermark + "."
+		}
+		if comment != "" {
+			stmts = append(stmts, fmt.Sprintf("COMMENT ON TABLE %s IS '%s'", r.Name, escapeSQLString(comment)))
+		}
+		for _, c := range r.Columns {
+			if c.Description == "" {
+				continue
+			}
+			stmts = append(stmts, fmt.Sprintf("COMMENT ON COLUMN %s.%s IS '%s'", r.Name, c.Name, escapeSQLString(c.Description)))
+		}
+	}
+	return stmts
+}
+
+func escapeSQLString(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
 func sqliteCreateTable(r *schema.Resource) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "CREATE TABLE IF NOT EXISTS accuranker_%s (\n", r.Name)

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,6 +33,12 @@ type Client struct {
 	NoCache    bool
 	cacheDir   string
 	limiter    *cliutil.AdaptiveLimiter
+
+	// PATCH(amend-2026-07-07: run report — spec F1): per-process request
+	// and 429 counters surfaced by Metrics() in metrics.go so dump/mirror
+	// run reports can state requests_made and rate_limit_hits.
+	requestCount  atomic.Int64
+	rateLimitHits atomic.Int64
 }
 
 // APIError carries HTTP status information for structured exit codes.
@@ -356,6 +363,9 @@ func (c *Client) do(method, path string, params map[string]string, body any, hea
 			}
 		}
 
+		// PATCH(amend-2026-07-07: run report — spec F1): count every wire
+		// request (including retries); cache hits never reach this point.
+		c.requestCount.Add(1)
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("%s %s: %w", method, path, err)
@@ -388,6 +398,11 @@ func (c *Client) do(method, path string, params map[string]string, body any, hea
 		}
 
 		// Rate limited - adjust adaptive limiter and retry
+		if resp.StatusCode == 429 {
+			// PATCH(amend-2026-07-07: run report — spec F1): count 429s
+			// whether or not a retry budget remains.
+			c.rateLimitHits.Add(1)
+		}
 		if resp.StatusCode == 429 && attempt < maxRetries {
 			c.limiter.OnRateLimit()
 			wait := cliutil.RetryAfter(resp)

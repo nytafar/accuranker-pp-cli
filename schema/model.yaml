@@ -34,6 +34,15 @@
 version: 1
 schema_name: accuranker
 
+# PATCH(amend-2026-07-07: catalog seeding — spec F5)
+# Per-resource `grain:` (what one row means) and `watermark:` (the column a
+# sync spine advances its cursor from) feed `schema --catalog`, which emits
+# catalog.json for the warehouse curator. Optional per-column `description:`
+# feeds `schema --format postgres-ddl --comments` (COMMENT ON TABLE/COLUMN).
+# Unless a resource carries its own `timezone_note:`, every timestamp emitted
+# by the API and this CLI is UTC ISO-8601; `date` columns are UTC calendar
+# dates.
+
 # -----------------------------------------------------------------------------
 # Resources (typed tables)
 # -----------------------------------------------------------------------------
@@ -48,6 +57,8 @@ resources:
     description: AccuRanker accounts the API token can see.
     source_endpoint: GET /api/v4/accounts/
     cursor_field: id
+    grain: one row per account visible to the API token
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,name,organizations.id,organizations.name,organizations.type"
     columns:
@@ -62,6 +73,8 @@ resources:
     description: Client groups that contain domains. ("Client" in legacy spec.)
     source_endpoint: derived from domains.group object
     cursor_field: id
+    grain: one row per client group
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,name"
     columns:
@@ -77,6 +90,8 @@ resources:
     description: Tracked domains. Parent of keywords, landing_pages, tags, competitors.
     source_endpoint: GET /api/v4/domains/
     cursor_field: last_scraped
+    grain: one row per tracked domain
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,domain,display_name,created_at,last_scraped,group.id,group.name,google_business_name,google_business_name_list,x_handle,linkedin_profile,facebook_profile,instagram_profile,tiktok_profile"
     columns:
@@ -103,14 +118,16 @@ resources:
     description: Tracked competitor domains per primary domain. Cardinality ~5 per domain.
     source_endpoint: GET /api/v4/domains/{id}/?fields=...,competitors.*
     cursor_field: created_at
+    grain: one row per tracked competitor of a primary domain
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,domain,display_name,created_at,google_business_name,google_business_name_list,x_handle,linkedin_profile,facebook_profile,instagram_profile,tiktok_profile"
     columns:
-      - { name: id,                type: bigint,    not_null: true, primary_key: true }
-      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
-      - { name: domain,            type: text,      not_null: true }
-      - { name: display_name,      type: text }
-      - { name: created_at,        type: timestamp }
+      - { name: id,                type: bigint,    not_null: true, primary_key: true, description: "AccuRanker competitor id" }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true, description: "Primary domain this competitor is tracked against" }
+      - { name: domain,            type: text,      not_null: true, description: "Competitor's domain name" }
+      - { name: display_name,      type: text,      description: "Human-friendly competitor label" }
+      - { name: created_at,        type: timestamp, description: "UTC time the competitor was added to tracking" }
       - { name: google_business_name,      type: text }
       - { name: google_business_name_list, type: json }
       - { name: x_handle,          type: text }
@@ -128,30 +145,32 @@ resources:
     description: Keywords tracked under a domain. Highest-cardinality resource.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/
     cursor_field: id
+    grain: one row per tracked keyword (current dimension snapshot)
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,starred,keyword,description,tags,dynamic_tags,search_type,created_at,search_location,search_locale.id,search_locale.country_code,search_locale.locale,search_locale.region,search_locale.region_code,search_engine.id,search_engine.name,preferred_landing_page.url,preferred_landing_page.match,search_volume.id,search_volume.search_volume,search_volume.avg_cost_per_click,search_volume.competition,ai_search_volume.id,ai_search_volume.search_volume,ai_search_volume.search_volume_total,folders"
     columns:
-      - { name: id,                type: bigint,    not_null: true, primary_key: true }
-      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
-      - { name: keyword,           type: text,      not_null: true }
-      - { name: description,       type: text }
-      - { name: starred,           type: boolean,   not_null: true, default: false }
-      - { name: tags,              type: json }     # array of strings
-      - { name: dynamic_tags,      type: json }     # array of strings
-      - { name: search_type,       type: integer }  # 1=Desktop, 2=Mobile
-      - { name: search_location,   type: text }
-      - { name: search_locale,     type: json }     # CountryLocale object
-      - { name: search_engine_id,  type: integer }
-      - { name: search_engine_name, type: text }
-      - { name: preferred_landing_page, type: json } # PreferredLandingPage object
-      - { name: search_volume_value, type: integer }
-      - { name: search_volume_avg_cpc, type: numeric }
-      - { name: search_volume_competition, type: numeric }
-      - { name: ai_search_volume_value, type: integer }
-      - { name: ai_search_volume_total, type: integer }
-      - { name: folders,           type: json }
-      - { name: created_at,        type: timestamp }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: id,                type: bigint,    not_null: true, primary_key: true, description: "AccuRanker keyword id (stable for the keyword's tracked lifetime)" }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true, description: "Parent domain id" }
+      - { name: keyword,           type: text,      not_null: true, description: "The tracked search phrase, verbatim" }
+      - { name: description,       type: text,      description: "Free-text note attached to the keyword in AccuRanker" }
+      - { name: starred,           type: boolean,   not_null: true, default: false, description: "User-starred flag" }
+      - { name: tags,              type: json,      description: "Static tags (array of strings)" }
+      - { name: dynamic_tags,      type: json,      description: "Rule-derived dynamic tags (array of strings)" }
+      - { name: search_type,       type: integer,   description: "1=Desktop, 2=Mobile" }
+      - { name: search_location,   type: text,      description: "Geo target string, when location-specific" }
+      - { name: search_locale,     type: json,      description: "CountryLocale object {id, country_code, locale, region, region_code}" }
+      - { name: search_engine_id,  type: integer,   description: "Search engine id (flattened from search_engine.id)" }
+      - { name: search_engine_name, type: text,     description: "Search engine name (flattened from search_engine.name)" }
+      - { name: preferred_landing_page, type: json, description: "PreferredLandingPage object {url, match}" }
+      - { name: search_volume_value, type: integer, description: "Current monthly search volume (flattened from search_volume.search_volume)" }
+      - { name: search_volume_avg_cpc, type: numeric, description: "Average cost per click (flattened from search_volume.avg_cost_per_click)" }
+      - { name: search_volume_competition, type: numeric, description: "Ads competition 0..1 (flattened from search_volume.competition)" }
+      - { name: ai_search_volume_value, type: integer, description: "Current monthly AI search volume" }
+      - { name: ai_search_volume_total, type: integer, description: "Total AI search volume across surfaces" }
+      - { name: folders,           type: json,      description: "Folder path segments the keyword is filed under" }
+      - { name: created_at,        type: timestamp, description: "UTC time the keyword was added to tracking — panel-membership left edge (tracked_from)" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
     indexes:
       - { name: keywords_domain_idx,  columns: [domain_id] }
       - { name: keywords_keyword_idx, columns: [keyword] }
@@ -161,45 +180,47 @@ resources:
     description: Daily rank snapshot per keyword. The fact table of the warehouse.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=ranks.*&period_from=&period_to=
     cursor_field: created_at  # ISO timestamp of the daily rank refresh
+    grain: one row per keyword per search_date (is_initial=true rows carry the add-time baseline)
+    watermark: search_date
     primary_key: [keyword_id, search_date]
     default_fields: "ranks.id,ranks.created_at,ranks.rank,ranks.share_of_voice,ranks.share_of_voice_percentage,ranks.estimated_visits,ranks.ai_share_of_voice,ranks.ctr,ranks.ctr_max,ranks.search_intent,ranks.highest_ranking_page,ranks.landing_page,ranks.title_description,ranks.extra_ranks,ranks.above_the_fold,ranks.browser_position_x1,ranks.browser_position_y1,ranks.browser_position_x2,ranks.browser_position_y2,ranks.page_serp_features,ranks.base_rank,ranks.local_pack_rank,ranks.max_rank,ranks.max_ai_sov,ranks.max_sov,ranks.max_sov_percentage,ranks.ai_traffic_value,ranks.max_ai_traffic_value,ranks.top_domain,ranks.ai_overview_text,ranks.ai_overview_urls,ranks.count_ai_overview_urls"
     columns:
-      - { name: id,                type: bigint,    not_null: true, primary_key: false }
-      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id", indexed: true }
-      - { name: search_date,       type: date,      not_null: true }
-      - { name: created_at,        type: timestamp }
-      - { name: rank,              type: integer }
-      - { name: share_of_voice,    type: integer }
-      - { name: share_of_voice_percentage, type: numeric }
-      - { name: estimated_visits,  type: integer }
-      - { name: ai_share_of_voice, type: integer }
-      - { name: ctr,               type: numeric }
-      - { name: ctr_max,           type: numeric }
-      - { name: search_intent,     type: json }
-      - { name: highest_ranking_page, type: text }
-      - { name: landing_page,      type: json }
-      - { name: title_description, type: json }
-      - { name: extra_ranks,       type: json }
-      - { name: above_the_fold,    type: boolean }
-      - { name: browser_position_x1, type: integer }
-      - { name: browser_position_y1, type: integer }
-      - { name: browser_position_x2, type: integer }
-      - { name: browser_position_y2, type: integer }
-      - { name: page_serp_features, type: json }
-      - { name: base_rank,         type: integer }
-      - { name: local_pack_rank,   type: integer }
-      - { name: max_rank,          type: integer }
-      - { name: max_ai_sov,        type: integer }
-      - { name: max_sov,           type: integer }
-      - { name: max_sov_percentage, type: numeric }
-      - { name: ai_traffic_value,  type: numeric }
-      - { name: max_ai_traffic_value, type: numeric }
-      - { name: top_domain,        type: text }
-      - { name: ai_overview_text,  type: text }
-      - { name: ai_overview_urls,  type: json }
-      - { name: count_ai_overview_urls, type: integer }
-      - { name: is_initial,        type: boolean, not_null: true, default: false }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: id,                type: bigint,    not_null: true, primary_key: false, description: "AccuRanker rank-record id (not stable across re-crawls; PK is keyword_id+search_date+is_initial)" }
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id", indexed: true, description: "Parent keyword id" }
+      - { name: search_date,       type: date,      not_null: true, description: "UTC calendar date of the rank measurement, derived from created_at" }
+      - { name: created_at,        type: timestamp, description: "UTC timestamp of the daily rank refresh" }
+      - { name: rank,              type: integer,   description: "Organic position for the keyword on this date; null when not ranking" }
+      - { name: share_of_voice,    type: integer,   description: "Absolute share-of-voice contribution of this keyword" }
+      - { name: share_of_voice_percentage, type: numeric, description: "Share of voice as a percentage of total possible" }
+      - { name: estimated_visits,  type: integer,   description: "Estimated daily visits attributable to this rank" }
+      - { name: ai_share_of_voice, type: integer,   description: "Share of voice within AI answer surfaces" }
+      - { name: ctr,               type: numeric,   description: "Modelled click-through rate at the current rank" }
+      - { name: ctr_max,           type: numeric,   description: "Modelled click-through rate at rank 1 (ceiling)" }
+      - { name: search_intent,     type: json,      description: "Intent classification array (informational/commercial/transactional/navigational)" }
+      - { name: highest_ranking_page, type: text,   description: "URL of the domain's highest-ranking page for this keyword" }
+      - { name: landing_page,      type: json,      description: "Landing-page object {id, path} the rank resolved to" }
+      - { name: title_description, type: json,      description: "SERP title/description snippet object" }
+      - { name: extra_ranks,       type: json,      description: "Additional positions the domain holds on the same SERP" }
+      - { name: above_the_fold,    type: boolean,   description: "True when the result renders above the fold" }
+      - { name: browser_position_x1, type: integer, description: "SERP pixel bounding box: left edge" }
+      - { name: browser_position_y1, type: integer, description: "SERP pixel bounding box: top edge (pixels from top)" }
+      - { name: browser_position_x2, type: integer, description: "SERP pixel bounding box: right edge" }
+      - { name: browser_position_y2, type: integer, description: "SERP pixel bounding box: bottom edge" }
+      - { name: page_serp_features, type: json,     description: "SERP features present on the page and whether the domain owns them" }
+      - { name: base_rank,         type: integer,   description: "Rank counting only classic organic results (no SERP features)" }
+      - { name: local_pack_rank,   type: integer,   description: "Position within the local pack, when present" }
+      - { name: max_rank,          type: integer,   description: "Best possible rank observed on the SERP" }
+      - { name: max_ai_sov,        type: integer,   description: "AI share-of-voice ceiling for the keyword" }
+      - { name: max_sov,           type: integer,   description: "Share-of-voice ceiling for the keyword" }
+      - { name: max_sov_percentage, type: numeric,  description: "Share-of-voice ceiling as a percentage" }
+      - { name: ai_traffic_value,  type: numeric,   description: "Monetary value of AI-surface traffic at current visibility" }
+      - { name: max_ai_traffic_value, type: numeric, description: "Monetary ceiling of AI-surface traffic value" }
+      - { name: top_domain,        type: text,      description: "Domain holding position 1 on this SERP" }
+      - { name: ai_overview_text,  type: text,      description: "Text of the AI Overview box, when present" }
+      - { name: ai_overview_urls,  type: json,      description: "URLs cited by the AI Overview" }
+      - { name: count_ai_overview_urls, type: integer, description: "Number of URLs cited by the AI Overview" }
+      - { name: is_initial,        type: boolean, not_null: true, default: false, description: "True for the baseline rank captured when the keyword was added (KeywordInitialRank)" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
     primary_key_constraint: [keyword_id, search_date, is_initial]
     indexes:
       - { name: keyword_ranks_keyword_date_idx, columns: [keyword_id, search_date] }
@@ -209,19 +230,21 @@ resources:
     description: Per-keyword rank of each tracked competitor on the same SERP and date.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=competitor_ranks.*&period_from=&period_to=
     cursor_field: created_at
+    grain: one row per keyword per competitor per search_date
+    watermark: search_date
     primary_key: [keyword_id, competitor_id, search_date]
     default_fields: "competitor_ranks.id,competitor_ranks.created_at,competitor_ranks.rank,competitor_ranks.competitor.id,competitor_ranks.competitor.domain,competitor_ranks.share_of_voice,competitor_ranks.estimated_visits,competitor_ranks.highest_ranking_page,competitor_ranks.title_description"
     columns:
-      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
-      - { name: competitor_id,     type: bigint,    not_null: true, foreign_key: "competitors.id" }
-      - { name: search_date,       type: date,      not_null: true }
-      - { name: created_at,        type: timestamp }
-      - { name: rank,              type: integer }
-      - { name: share_of_voice,    type: integer }
-      - { name: estimated_visits,  type: integer }
-      - { name: highest_ranking_page, type: text }
-      - { name: title_description, type: json }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id", description: "Keyword whose SERP the competitor was observed on" }
+      - { name: competitor_id,     type: bigint,    not_null: true, foreign_key: "competitors.id", description: "Tracked competitor id (flattened from competitor.id)" }
+      - { name: search_date,       type: date,      not_null: true, description: "UTC calendar date of the measurement, derived from created_at" }
+      - { name: created_at,        type: timestamp, description: "UTC timestamp of the rank refresh" }
+      - { name: rank,              type: integer,   description: "Competitor's organic position on the same SERP and date" }
+      - { name: share_of_voice,    type: integer,   description: "Competitor's share-of-voice contribution for this keyword" }
+      - { name: estimated_visits,  type: integer,   description: "Estimated daily visits to the competitor at this rank" }
+      - { name: highest_ranking_page, type: text,   description: "Competitor URL holding the rank" }
+      - { name: title_description, type: json,      description: "Competitor's SERP title/description snippet object" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
     primary_key_constraint: [keyword_id, competitor_id, search_date]
     indexes:
       - { name: kcr_keyword_idx,    columns: [keyword_id] }
@@ -234,6 +257,8 @@ resources:
     description: People Also Ask terms scraped per keyword.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=people_also_ask.*
     cursor_field: last_seen_at
+    grain: one row per keyword per People-Also-Ask term
+    watermark: last_seen_at
     columns:
       - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
       - { name: term,              type: text,      not_null: true }
@@ -245,6 +270,8 @@ resources:
     description: Full SERP snapshot snippets per keyword (top_domain + elements).
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=full_serp.*
     cursor_field: created_at
+    grain: one row per keyword per search_date (full SERP snapshot)
+    watermark: search_date
     columns:
       - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
       - { name: search_date,       type: date,      not_null: true }
@@ -261,11 +288,13 @@ resources:
     description: Historical monthly search volume per keyword.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=search_volume.history.*
     cursor_field: month
+    grain: one row per keyword per calendar month
+    watermark: month
     columns:
-      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
-      - { name: month,             type: date,      not_null: true }  # first day of month
-      - { name: search_volume,     type: integer }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id", description: "Parent keyword id" }
+      - { name: month,             type: date,      not_null: true, description: "First day of the month the volume applies to (UTC)" }
+      - { name: search_volume,     type: integer,   description: "Monthly search volume for that month" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
     primary_key_constraint: [keyword_id, month]
     indexes:
       - { name: svh_keyword_month_idx, columns: [keyword_id, month] }
@@ -274,6 +303,8 @@ resources:
     description: Historical monthly AI-search volume per keyword.
     source_endpoint: GET /api/v4/domains/{domain_pk}/keywords/?fields=ai_search_volume.history.*
     cursor_field: month
+    grain: one row per keyword per calendar month (AI search)
+    watermark: month
     columns:
       - { name: keyword_id,        type: bigint,    not_null: true, foreign_key: "keywords.id" }
       - { name: month,             type: date,      not_null: true }
@@ -288,17 +319,19 @@ resources:
     description: Per-domain aggregated metrics, one row per day.
     source_endpoint: GET /api/v4/domains/{id}/?fields=history.*&period_from=&period_to=
     cursor_field: date
+    grain: one row per domain per date
+    watermark: date
     primary_key: [domain_id, date]
     default_fields: "history.date,history.ranking_movement,history.ranking_distribution,history.share_of_voice,history.share_of_voice_percentage,history.search_volume,history.average_rank,history.average_local_pack_rank,history.average_ctr,history.average_ctr_max,history.estimated_visits,history.ai_share_of_voice,history.above_the_fold,history.informational_intent,history.commercial_intent,history.transactional_intent,history.navigational_intent,history.traffic_value,history.ai_traffic_value,history.pixels_from_top,history.avg_base_rank,history.ai_search_volume,history.keywords_with_ai_overview,history.keywords_with_ai_overview_owned"
     columns:
-      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
-      - { name: date,              type: date,      not_null: true }
-      - { name: ranking_movement,  type: json }
-      - { name: ranking_distribution, type: json }
-      - { name: share_of_voice,    type: integer }
-      - { name: share_of_voice_percentage, type: numeric }
-      - { name: search_volume,     type: integer }
-      - { name: average_rank,      type: numeric }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", description: "Domain the daily aggregate belongs to" }
+      - { name: date,              type: date,      not_null: true, description: "UTC calendar date of the aggregate" }
+      - { name: ranking_movement,  type: json,      description: "Counts of keywords moved up/down/unchanged vs previous day" }
+      - { name: ranking_distribution, type: json,   description: "Keyword counts per rank bucket (1-3, 4-10, ...)" }
+      - { name: share_of_voice,    type: integer,   description: "Domain-total share of voice on this date" }
+      - { name: share_of_voice_percentage, type: numeric, description: "Domain-total share of voice as a percentage" }
+      - { name: search_volume,     type: integer,   description: "Sum of monthly search volume across tracked keywords" }
+      - { name: average_rank,      type: numeric,   description: "Mean rank across ranking keywords" }
       - { name: average_local_pack_rank, type: numeric }
       - { name: average_ctr,       type: numeric }
       - { name: average_ctr_max,   type: numeric }
@@ -325,6 +358,8 @@ resources:
     description: Per-competitor aggregated metrics, one row per day.
     source_endpoint: GET /api/v4/domains/{id}/?fields=competitors.history.*
     cursor_field: date
+    grain: one row per competitor per date
+    watermark: date
     columns:
       - { name: competitor_id,     type: bigint,    not_null: true, foreign_key: "competitors.id" }
       - { name: date,              type: date,      not_null: true }
@@ -358,19 +393,23 @@ resources:
     description: Tracked landing pages (URLs) per domain.
     source_endpoint: GET /api/v4/domains/{domain_pk}/landing_pages/
     cursor_field: id
+    grain: one row per tracked landing page
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,landing_page,title,history.date,history.share_of_voice,history.average_rank,history.estimated_visits,history.search_volume,history.keywords,history.ai_share_of_voice,history.above_the_fold,history.traffic_value,history.ai_traffic_value"
     columns:
-      - { name: id,                type: bigint,    not_null: true, primary_key: true }
-      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true }
-      - { name: landing_page,      type: text,      not_null: true }
-      - { name: title,             type: text }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: id,                type: bigint,    not_null: true, primary_key: true, description: "AccuRanker landing-page id" }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", indexed: true, description: "Parent domain id" }
+      - { name: landing_page,      type: text,      not_null: true, description: "Landing-page path/URL as tracked" }
+      - { name: title,             type: text,      description: "Page title captured at crawl" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
 
   - name: landing_page_history
     description: Per-landing-page aggregated metrics, one row per day.
     source_endpoint: GET /api/v4/domains/{domain_pk}/landing_pages/{id}/?fields=history.*
     cursor_field: date
+    grain: one row per landing page per date
+    watermark: date
     columns:
       - { name: landing_page_id,   type: bigint,    not_null: true, foreign_key: "landing_pages.id" }
       - { name: date,              type: date,      not_null: true }
@@ -404,18 +443,22 @@ resources:
     description: Distinct keyword tags per domain.
     source_endpoint: GET /api/v4/domains/{domain_pk}/tags/
     cursor_field: tag
+    grain: one row per domain per distinct tag
+    watermark: synced_at
     primary_key: [domain_id, tag]
     default_fields: "tag,history.date,history.share_of_voice,history.average_rank,history.estimated_visits,history.search_volume,history.keywords,history.ai_share_of_voice"
     columns:
-      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
-      - { name: tag,               type: text,      not_null: true }
-      - { name: is_dynamic,        type: boolean,   not_null: true, default: false }
-      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now }
+      - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id", description: "Parent domain id" }
+      - { name: tag,               type: text,      not_null: true, description: "Tag string as it appears on keywords" }
+      - { name: is_dynamic,        type: boolean,   not_null: true, default: false, description: "True when the tag is rule-derived rather than user-assigned" }
+      - { name: synced_at,         type: timestamp, not_null: true, default_fn: now, description: "UTC time this row was written by the CLI" }
 
   - name: tag_history
     description: Per-tag aggregated metrics, one row per day.
     source_endpoint: GET /api/v4/domains/{domain_pk}/tags/{name}/?fields=history.*
     cursor_field: date
+    grain: one row per domain per tag per date
+    watermark: date
     columns:
       - { name: domain_id,         type: bigint,    not_null: true, foreign_key: "domains.id" }
       - { name: tag,               type: text,      not_null: true }
@@ -451,6 +494,8 @@ resources:
     description: AccuLLM brands. Requires LLM API plan tier; commands emit exit code 45 if denied.
     source_endpoint: GET /api/v4/brands/
     cursor_field: id
+    grain: one row per AccuLLM brand
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,domain,display_name,brand_list,created_at,last_scraped,group.id,group.name"
     columns:
@@ -467,6 +512,8 @@ resources:
     description: AccuLLM prompts under a brand.
     source_endpoint: GET /api/v4/brands/{brands_pk}/prompts/
     cursor_field: id
+    grain: one row per AccuLLM prompt
+    watermark: synced_at
     primary_key: [id]
     default_fields: "id,starred,prompt,description,tags,created_at,country_code,results.created_at,results.search_engine,results.top_source,results.top_brand,results.prompt_response,results.prompt_response_length"
     columns:
@@ -484,6 +531,8 @@ resources:
     description: Per-prompt LLM-search results time-series.
     source_endpoint: GET /api/v4/brands/{brands_pk}/prompts/{id}/?fields=results.*
     cursor_field: created_at
+    grain: one row per prompt per search_date
+    watermark: search_date
     columns:
       - { name: prompt_id,         type: bigint,    not_null: true, foreign_key: "prompts.id" }
       - { name: search_date,       type: date,      not_null: true }
@@ -505,6 +554,8 @@ resources:
     description: Per-(resource, scope) cursor recording last_synced_date and counters.
     source_endpoint: internal
     cursor_field: last_synced_at
+    grain: one row per (resource, scope) pair — CLI-internal bookkeeping, not warehouse data
+    watermark: last_synced_at
     columns:
       - { name: resource,          type: text,      not_null: true }
       - { name: scope,             type: text,      not_null: true }  # e.g. domain_id=N or brand_id=N or "global"

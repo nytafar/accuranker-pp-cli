@@ -145,19 +145,23 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   accuranker-pp-cli mirror --domain 295242 --since 2024-01-01 --json
   ```
-- **`dump`** — Stream historical rank or domain-history data over any window. The CLI walks 100-day slices internally and dedups, emitting one record per line.
+- **`dump`** — Stream NDJSON for every warehouse-facing resource. Windowed families (`keyword-ranks`, `domain-history`, `competitor-ranks`) walk 100-day slices internally and dedup; snapshot families (`keywords`, `competitors`, `landing-pages`, `tags`) emit current dimension state. Every run writes exactly one machine-readable run report (stderr or `--report-file`) with `rows_emitted`, `requests_made`, `rate_limit_hits`, `clean_exit`, and `next_cursor` — the watermark handshake a sync spine advances from. `--envelope` wraps each record as `{source, endpoint, params_hash, api_version, fetched_at, payload}` for lossless raw-JSONB landing.
 
-  _Reach for this when an agent or pipeline asks for arbitrary historical windows. Auto-chunks the 100-day cap so callers don't have to._
+  _Reach for this when an agent or pipeline asks for arbitrary historical windows, or as the extract adapter under a warehouse sync spine. Partial failures exit non-zero with `next_cursor` = the last chunk boundary that completed for every domain._
 
   ```bash
-  accuranker-pp-cli dump keyword-ranks --domain 295242 --from 2024-01-01 --to 2026-05-20 --json
+  accuranker-pp-cli dump keyword-ranks --domain 295242 --from 2024-01-01 --to 2026-05-20 --report-file run.json
+  accuranker-pp-cli dump keywords --domain 295242 > keywords-$(date +%F).ndjson   # daily panel snapshot
+  accuranker-pp-cli dump competitor-ranks --domain 295242 --from 2026-06-01 --envelope
   ```
-- **`schema`** — Print the canonical data shape — every resource, field, filter dimension, comparator legality, and sync hint — as JSON or Postgres DDL.
+- **`schema`** — Print the canonical data shape — every resource, field, filter dimension, comparator legality, and sync hint — as JSON or Postgres DDL. `--format postgres-ddl --comments` appends `COMMENT ON TABLE/COLUMN` seeded from model.yaml descriptions; `--catalog` emits catalog.json (per table: grain, upsert key, watermark column, timezone notes) for the warehouse curator.
 
-  _Reach for this before standing up a warehouse. The DDL stays in lockstep with the CLI, so the loader and the schema can't drift._
+  _Reach for this before standing up a warehouse. The DDL, comments, and catalog stay in lockstep with the CLI, so the loader and the schema can't drift._
 
   ```bash
   accuranker-pp-cli schema --resource keyword_ranks --format postgres-ddl
+  accuranker-pp-cli schema --format postgres-ddl --comments > accuranker.sql
+  accuranker-pp-cli schema --catalog > catalog.json
   ```
 - **`push`** — Upsert every table from the local SQLite mirror into a remote Postgres schema using DDL derived from schema/model.yaml. The bridge to a downstream analytics layer.
 
@@ -200,12 +204,13 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Write-side safety
-- **`keywords-diff`** — Compare a local CSV/NDJSON keyword spec against AccuRanker's current keyword list. Emits adds/removes/updates without writing.
+- **`keywords-diff`** — Compare a local CSV/NDJSON keyword spec against AccuRanker's current keyword list. Emits adds/removes/updates without writing. With `--against <prev-snapshot.ndjson|mirror>` it becomes a panel-membership differ: compare the live keyword list against a previous `dump keywords` snapshot and emit NDJSON `added`/`removed` events — the soft-delete signal the API itself never provides (the warehouse stamps `tracked_to = observed_at`).
 
-  _Reach for this every time you're about to bulk-import. Use --apply to commit the partition that diff produced._
+  _Reach for this every time you're about to bulk-import (use --apply to commit), or daily under a sync spine to synthesize keyword panel events._
 
   ```bash
   accuranker-pp-cli keywords-diff --domain 295242 --spec ./keywords.csv --json
+  accuranker-pp-cli keywords-diff --domain 295242 --against keywords-2026-07-06.ndjson
   ```
 
 ## Usage

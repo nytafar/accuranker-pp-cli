@@ -84,37 +84,11 @@ func mirrorKeywords(ctx context.Context, cl *client.Client, st *store.Store, m *
 		stat.RowsFetched += len(raw)
 
 		// Flatten and stamp domain_id, plus search_engine.id/name.
+		// PATCH(amend-2026-07-07: spec F2): shared with `dump keywords`
+		// via flattenKeywordRow so both surfaces emit the same shape.
 		rows := make([]map[string]any, 0, len(raw))
 		for _, item := range raw {
-			item["domain_id"] = did
-			if se, ok := item["search_engine"].(map[string]any); ok {
-				if sid, ok := extractInt64(se, "id"); ok {
-					item["search_engine_id"] = sid
-				}
-				if name, ok := se["name"].(string); ok {
-					item["search_engine_name"] = name
-				}
-			}
-			if sv, ok := item["search_volume"].(map[string]any); ok {
-				if v, ok := extractInt64(sv, "search_volume"); ok {
-					item["search_volume_value"] = v
-				}
-				if v, ok := extractFloat(sv, "avg_cost_per_click"); ok {
-					item["search_volume_avg_cpc"] = v
-				}
-				if v, ok := extractFloat(sv, "competition"); ok {
-					item["search_volume_competition"] = v
-				}
-			}
-			if av, ok := item["ai_search_volume"].(map[string]any); ok {
-				if v, ok := extractInt64(av, "search_volume"); ok {
-					item["ai_search_volume_value"] = v
-				}
-				if v, ok := extractInt64(av, "search_volume_total"); ok {
-					item["ai_search_volume_total"] = v
-				}
-			}
-			rows = append(rows, item)
+			rows = append(rows, flattenKeywordRow(item, did))
 		}
 		n, err := upsertJSON(ctx, st.DB(), "accuranker_keywords", m, rows)
 		if err != nil {
