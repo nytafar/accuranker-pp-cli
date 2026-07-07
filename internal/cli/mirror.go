@@ -42,6 +42,7 @@ type mirrorOptions struct {
 	maxWindowDays int
 	includeLLM    bool
 	dryRun        bool
+	reportFile    string
 }
 
 func newMirrorCmd(flags *rootFlags) *cobra.Command {
@@ -121,6 +122,7 @@ downstream Bun-based MCP service to consume.`,
 	cmd.Flags().BoolVar(&opts.full, "full", false, "Ignore existing cursor; resync from --since")
 	cmd.Flags().IntVar(&windowDaysArg, "window-days", 100, "Days per API call chunk (1..100; API caps at 100)")
 	cmd.Flags().BoolVar(&opts.includeLLM, "include-llm", false, "Mirror LLM-tier resources too (paywalled for some plans)")
+	cmd.Flags().StringVar(&opts.reportFile, "report-file", "", "Write the run report JSON to this path instead of stderr")
 	return cmd
 }
 
@@ -233,15 +235,58 @@ func runMirror(ctx context.Context, cmd *cobra.Command, flags *rootFlags, opts *
 
 	rep.FinishedAt = time.Now().UTC()
 
+	// PATCH(amend-2026-07-07: run report — spec F1): mirror emits the same
+	// watermark-handshake report as dump (stderr or --report-file), on top
+	// of its detailed per-resource stdout report. clean_exit is true only
+	// when no resource errored (paywalled/skipped stay soft); a non-clean
+	// run exits non-zero so the spine never advances a watermark past it.
+	failed := make([]string, 0, 2)
+	var rowsWritten int64
+	for _, s := range rep.ResourceStats {
+		if s.Status == "error" {
+			failed = append(failed, fmt.Sprintf("%s (%s)", s.Resource, s.Reason))
+		}
+		rowsWritten += int64(s.RowsWritten)
+	}
+	runRep := &dumpRunReport{
+		Resource:    "mirror",
+		Window:      dumpReportWindow{From: windowStart, To: windowEnd},
+		RowsEmitted: rowsWritten,
+		APIVersion:  dumpAPIVersion,
+		StartedAt:   rep.StartedAt.Format(time.RFC3339),
+		FinishedAt:  rep.FinishedAt.Format(time.RFC3339),
+		CleanExit:   len(failed) == 0,
+	}
+	if len(opts.domainIDs) == 1 {
+		runRep.DomainID = opts.domainIDs[0]
+	} else {
+		runRep.DomainIDs = opts.domainIDs
+	}
+	runRep.RequestsMade, runRep.RateLimitHits = cl.Metrics()
+	if len(failed) == 0 {
+		runRep.NextCursor = windowEnd
+	} else {
+		runRep.Error = "resource(s) failed: " + strings.Join(failed, "; ")
+	}
+	if err := writeDumpReport(runRep, cmd.ErrOrStderr(), opts.reportFile); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: writing run report failed: %v\n", err)
+	}
+
 	if flags.asJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(rep)
+		if err := enc.Encode(rep); err != nil {
+			return err
+		}
+	} else {
+		for _, s := range rep.ResourceStats {
+			fmt.Fprintf(cmd.OutOrStdout(), "%-22s %-10s %d rows / %d API calls (%d windows)  %s\n", s.Resource, s.Status, s.RowsWritten, s.APICalls, s.Windows, s.Reason)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Mirror complete in %s. DB: %s\n", rep.FinishedAt.Sub(rep.StartedAt).Round(time.Millisecond), rep.DBPath)
 	}
-	for _, s := range rep.ResourceStats {
-		fmt.Fprintf(cmd.OutOrStdout(), "%-22s %-10s %d rows / %d API calls (%d windows)  %s\n", s.Resource, s.Status, s.RowsWritten, s.APICalls, s.Windows, s.Reason)
+	if len(failed) > 0 {
+		return fmt.Errorf("mirror: %s", runRep.Error)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Mirror complete in %s. DB: %s\n", rep.FinishedAt.Sub(rep.StartedAt).Round(time.Millisecond), rep.DBPath)
 	return nil
 }
 

@@ -40,8 +40,17 @@ type Resource struct {
 	PrimaryKey           []string `yaml:"primary_key"`
 	PrimaryKeyConstraint []string `yaml:"primary_key_constraint"`
 	DefaultFields        string   `yaml:"default_fields"`
-	Columns              []Column `yaml:"columns"`
-	Indexes              []Index  `yaml:"indexes"`
+	// PATCH(amend-2026-07-07: catalog seeding — spec F5). Grain is the
+	// human statement of what one row means ("one row per keyword per
+	// search_date"); Watermark names the column the sync spine advances
+	// its cursor from; TimezoneNote overrides the model-wide UTC note for
+	// resources with divergent timestamp semantics. All three are optional
+	// in YAML and surfaced by `schema --catalog`.
+	Grain        string   `yaml:"grain,omitempty"`
+	Watermark    string   `yaml:"watermark,omitempty"`
+	TimezoneNote string   `yaml:"timezone_note,omitempty"`
+	Columns      []Column `yaml:"columns"`
+	Indexes      []Index  `yaml:"indexes"`
 }
 
 // Column is one typed column in a Resource's table.
@@ -54,6 +63,10 @@ type Column struct {
 	Indexed    bool   `yaml:"indexed"`
 	Default    any    `yaml:"default"`
 	DefaultFn  string `yaml:"default_fn"`
+	// PATCH(amend-2026-07-07: catalog seeding — spec F5). Optional
+	// human description; drives `schema --format postgres-ddl --comments`
+	// COMMENT ON COLUMN emission.
+	Description string `yaml:"description,omitempty"`
 }
 
 // Index is a secondary index on a Resource.

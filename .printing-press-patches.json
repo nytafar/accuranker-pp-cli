@@ -1,7 +1,70 @@
 {
   "schema_version": 1,
-  "applied_at": "2026-05-20",
+  "applied_at": "2026-07-07",
   "base_run_id": "20260520-105352",
   "base_printing_press_version": "4.9.0",
-  "patches": []
+  "patches": [
+    {
+      "id": "warehouse-run-report",
+      "amend_run_id": "amend-2026-07-07T1054",
+      "summary": "Every dump and mirror run emits exactly one machine-readable run report (stderr or --report-file) with rows_emitted, requests_made, rate_limit_hits, clean_exit and next_cursor; partial failures exit non-zero with next_cursor = last chunk boundary completed for all domains.",
+      "reason": "Warehouse ingest spec F1: the sync spine advances its watermark from next_cursor, never from the requested window. Includes a 4-line touch to generated internal/client/client.go adding request/429 counters (accessor in hand-authored metrics.go).",
+      "files": [
+        "internal/cli/dump.go",
+        "internal/cli/mirror.go",
+        "internal/client/client.go",
+        "internal/client/metrics.go"
+      ],
+      "validated_outcome": "Kill-mid-chunk simulation reports the last fully-completed boundary; live dump keyword-ranks --report-file verified 2026-07-07.",
+      "findings_addressed": ["F1"]
+    },
+    {
+      "id": "uniform-dump-surface",
+      "amend_run_id": "amend-2026-07-07T1054",
+      "summary": "dump now covers keywords, competitors, competitor-ranks, landing-pages and tags alongside keyword-ranks and domain-history, with one uniform --domain/--from/--to/--envelope/report contract.",
+      "reason": "Warehouse ingest spec F2: every ingest stream needs the same envelope/report semantics; competitors + keyword_competitor_ranks were modelled in model.yaml but unwired. Live-API drift handled: landing_pages list returns 'path' (aliased to landing_page), tags list prepends an untagged {tag:null} bucket row (dropped).",
+      "files": [
+        "internal/cli/dump.go",
+        "internal/cli/mirror_runners.go"
+      ],
+      "validated_outcome": "dump competitors rows round-trip into the model-generated accuranker_competitors SQLite table with no schema edits (verified live 2026-07-07, 3 rows); competitor-ranks emitted 2871 rows over a 3-day window with keyword_id/competitor_id/search_date stamped.",
+      "findings_addressed": ["F2"]
+    },
+    {
+      "id": "raw-envelope-mode",
+      "amend_run_id": "amend-2026-07-07T1054",
+      "summary": "--envelope on every dump resource wraps each record as {source, endpoint, params_hash, api_version, fetched_at, payload} for lossless raw-JSONB landing.",
+      "reason": "Warehouse ingest spec F3: typed NDJSON is a convenience projection; the envelope is what the raw landing layer ingests so a model.yaml gap can never become data loss.",
+      "files": [
+        "internal/cli/dump.go"
+      ],
+      "validated_outcome": "params_hash is insertion-order independent and endpoint-scoped (unit tests); live envelope verified 2026-07-07.",
+      "findings_addressed": ["F3"]
+    },
+    {
+      "id": "panel-events-against",
+      "amend_run_id": "amend-2026-07-07T1054",
+      "summary": "keywords-diff --against <prev-snapshot.ndjson|mirror> emits NDJSON added/removed panel-membership events (keyword_id, keyword, observed_at, created_at).",
+      "reason": "Warehouse ingest spec F4: the API has no keyword-deletion signal; the warehouse synthesizes (keyword, tracked_from, tracked_to) from daily snapshots. 'removed' is the soft-delete signal; the CLI keeps no state.",
+      "files": [
+        "internal/cli/keywords_diff.go"
+      ],
+      "validated_outcome": "Same-input diff emits nothing (live verified: 319 vs 319 keywords, 0 events); raw and enveloped snapshot lines both parse.",
+      "findings_addressed": ["F4"]
+    },
+    {
+      "id": "catalog-seeding",
+      "amend_run_id": "amend-2026-07-07T1054",
+      "summary": "model.yaml gains per-resource grain/watermark keys and per-column descriptions; schema --format postgres-ddl --comments emits COMMENT ON TABLE/COLUMN; schema --catalog emits catalog.json (grain, upsert key, watermark column, timezone notes).",
+      "reason": "Warehouse ingest spec F5: the CLI owns the best structured description of this data — let it seed the catalog instead of a human re-typing it. The catalog reports the DDL-enforced upsert key (primary_key_constraint when declared, e.g. keyword_ranks includes is_initial).",
+      "files": [
+        "schema/model.yaml",
+        "internal/schema/loader.go",
+        "internal/store/accuranker_schema.go",
+        "internal/cli/schema_cmd.go"
+      ],
+      "validated_outcome": "114 COMMENT ON statements emitted; catalog upsert_key for keyword_ranks is [keyword_id, search_date, is_initial].",
+      "findings_addressed": ["F5"]
+    }
+  ]
 }
