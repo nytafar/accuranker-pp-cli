@@ -65,6 +65,42 @@
       ],
       "validated_outcome": "114 COMMENT ON statements emitted; catalog upsert_key for keyword_ranks is [keyword_id, search_date, is_initial].",
       "findings_addressed": ["F5"]
+    },
+    {
+      "id": "dump-completeness-resources",
+      "amend_run_id": "amend-2026-07-21T1500",
+      "summary": "dump now covers every model.yaml warehouse resource except sync_cursor: full-serp, search-volume-history, ai-search-volume-history, competitor-history, landing-page-history, tag-history, people-also-ask, plus the GLOBAL resources domains/accounts/groups (no --domain). `dump all` sweeps them through one code path; a central dumpResources registry drives help, validation, dedup and the sweep.",
+      "reason": "Warehouse ingest spec F9: the Noracle M3 adapter shells out to `dump <resource> --envelope --agent --report-file`, so every resource added to dump becomes landable with zero adapter code. History resources are projected from the list endpoints' inline history (landing_pages/tags carry history.* inline), removing the old store-aware limitation on landing-page-history. Global resources dump the whole set with no --domain; dump domains carries created_at (per-domain backfill floor).",
+      "files": [
+        "internal/cli/dump.go",
+        "internal/cli/which.go",
+        "README.md"
+      ],
+      "validated_outcome": "dump --help + agent-context list all 20 resources with windowed/snapshot/global classification; schema --catalog covers all 21 model tables with no gaps; dedup keys unit-tested per resource; full build + cli/schema/client test packages green.",
+      "findings_addressed": ["F9"]
+    },
+    {
+      "id": "dump-llm-tier-gated",
+      "amend_run_id": "amend-2026-07-21T1500",
+      "summary": "The LLM/AccuLLM tier (brands, prompts, prompt-results) is wired under dump but off by default: excluded from a `dump all` sweep unless --include-llm, and any gated resource (LLM tier + tag-history) degrades to exit code 45 with status skipped_unentitled instead of a hard failure. In a sweep the LLM resources are recorded skipped_unentitled and the sweep still exits 0 for the entitled resources.",
+      "reason": "Warehouse ingest spec F10: the account has no LLM plan today, but the tool must be warehouse-ready the day one is added without a rebuild. Exit 45 is a distinct 'not entitled to this tier' signal (vs authErr=4 'bad credentials') so the sync spine can skip-and-continue. isUnentitledErr covers the AccuLLM paywall bodies plus HTTP 403 / 400+access-denial (tag-history is tier-restricted on some accounts).",
+      "files": [
+        "internal/cli/dump.go",
+        "internal/cli/helpers.go"
+      ],
+      "validated_outcome": "Unit tests: a gated resource whose fetch returns a paywall body maps to ExitCode 45 with report.status=skipped_unentitled; a non-entitlement failure (e.g. connection refused) stays a hard error; isUnentitledErr matches paywall/403 but not 500/network.",
+      "findings_addressed": ["F10"]
+    },
+    {
+      "id": "dump-backfill-floor",
+      "amend_run_id": "amend-2026-07-21T1500",
+      "summary": "F6 initial ranks: dump keyword-ranks now projects initial_rank.* alongside ranks.* and emits the KeywordInitialRank baseline row with is_initial=true (regular rows flagged is_initial=false honestly); the dedup key includes is_initial so the baseline never collides with the same-day daily rank. F7 retention probe: dump <windowed> --probe-earliest binary-searches the earliest date with data per domain (100-day probe windows smooth crawl gaps) and reports it as earliest_available in the F1 report without streaming rows.",
+      "reason": "Warehouse ingest spec F11: every keyword's series needs a defined left edge, and the spine needs the retention floor as a backfill floor instead of guessing. The conservative probe floor is <= the true earliest date, which is exactly what a backfill floor wants.",
+      "files": [
+        "internal/cli/dump.go"
+      ],
+      "validated_outcome": "Unit tests: two chunks returning the same baseline dedup to one is_initial=true row plus the daily rows; --probe-earliest finds a floor <= the seeded data start and streams no rows.",
+      "findings_addressed": ["F11"]
     }
   ]
 }
