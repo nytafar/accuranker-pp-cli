@@ -938,6 +938,25 @@ func lookupFieldValue(obj map[string]any, snakeKey string) any {
 	return LookupFieldValue(obj, snakeKey)
 }
 
+// coalesceFieldValue returns the first field whose lookup yields a non-nil,
+// non-empty value, in the order given. Dependent-resource sync injects the
+// parent scope as parent_id, while a typed table's parent-FK column (e.g.
+// keywords.domains_id) is declared NOT NULL from model.yaml. The API list
+// items carry neither the FK nor a temporal field — only {id, parent_id} —
+// so the typed upsert must fall back to the injected parent_id to satisfy
+// the NOT NULL constraint. Without this, every dependent typed upsert rolls
+// back its per-item savepoint and only the generic resources row survives.
+func coalesceFieldValue(obj map[string]any, keys ...string) any {
+	for _, k := range keys {
+		if v := lookupFieldValue(obj, k); v != nil {
+			if s := fmt.Sprintf("%v", v); s != "" && s != "<nil>" {
+				return v
+			}
+		}
+	}
+	return nil
+}
+
 // upsertAccountsTx writes the typed-table portion of a accounts upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1057,7 +1076,7 @@ func (s *Store) upsertPromptsTx(tx *sql.Tx, id string, obj map[string]any, data 
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT("id") DO UPDATE SET "brands_id" = excluded."brands_id", "data" = excluded."data", "synced_at" = excluded."synced_at", "parent_id" = excluded."parent_id"`,
 		id,
-		lookupFieldValue(obj, "brands_id"),
+		coalesceFieldValue(obj, "brands_id", "parent_id"),
 		string(data),
 		time.Now(),
 		lookupFieldValue(obj, "parent_id"),
@@ -1233,7 +1252,7 @@ func (s *Store) upsertKeywordsTx(tx *sql.Tx, id string, obj map[string]any, data
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT("id") DO UPDATE SET "domains_id" = excluded."domains_id", "data" = excluded."data", "synced_at" = excluded."synced_at", "parent_id" = excluded."parent_id"`,
 		id,
-		lookupFieldValue(obj, "domains_id"),
+		coalesceFieldValue(obj, "domains_id", "parent_id"),
 		string(data),
 		time.Now(),
 		lookupFieldValue(obj, "parent_id"),
@@ -1285,7 +1304,7 @@ func (s *Store) upsertLandingPagesTx(tx *sql.Tx, id string, obj map[string]any, 
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT("id") DO UPDATE SET "domains_id" = excluded."domains_id", "data" = excluded."data", "synced_at" = excluded."synced_at", "parent_id" = excluded."parent_id"`,
 		id,
-		lookupFieldValue(obj, "domains_id"),
+		coalesceFieldValue(obj, "domains_id", "parent_id"),
 		string(data),
 		time.Now(),
 		lookupFieldValue(obj, "parent_id"),
@@ -1337,7 +1356,7 @@ func (s *Store) upsertTagsTx(tx *sql.Tx, id string, obj map[string]any, data jso
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT("id") DO UPDATE SET "domains_id" = excluded."domains_id", "data" = excluded."data", "synced_at" = excluded."synced_at", "parent_id" = excluded."parent_id"`,
 		id,
-		lookupFieldValue(obj, "domains_id"),
+		coalesceFieldValue(obj, "domains_id", "parent_id"),
 		string(data),
 		time.Now(),
 		lookupFieldValue(obj, "parent_id"),
@@ -1655,6 +1674,27 @@ var resourceIDFieldOverrides = map[string]string{
 	"domains":  "id",
 	"keywords": "id",
 	"prompts":  "id",
+	// The AccuRanker list endpoints for these dependents return no server id —
+	// only a natural key (landing_pages: {path}, tags: {tag}) — which the
+	// generic fallback list does not recognize, so every item was skipped as
+	// "no extractable ID field found". The natural key is unique only within
+	// the parent domain (see resourceScopedNaturalKey), not globally.
+	"landing_pages": "path",
+	"tags":          "tag",
+}
+
+// resourceScopedNaturalKey lists dependent resources whose extractable id is a
+// natural key (a URL path, a tag label) that is unique only within the parent
+// scope, not globally. AccuRanker returns e.g. {"path":"/"} for the root
+// landing page of every domain, so two domains would collide on the generic
+// (resource_type, id) PK and the typed table's id PK, silently overwriting one
+// domain's row with another's. For these resources UpsertBatch prefixes the
+// injected parent_id so both the generic and typed rows stay collision-free
+// across parents; parent_id / domains_id still carry the raw scope and the
+// data JSON still carries the original natural key.
+var resourceScopedNaturalKey = map[string]bool{
+	"landing_pages": true,
+	"tags":          true,
 }
 
 // genericIDFieldFallbacks is the runtime safety net for resources that did
@@ -1730,6 +1770,19 @@ func (s *Store) UpsertBatch(resourceType string, items []json.RawMessage) (int, 
 			skippedCount++
 			extractFailures++
 			continue
+		}
+
+		// Parent-scope natural keys so two parents sharing a natural key
+		// (e.g. every domain's root landing page "/") don't collide on the
+		// generic (resource_type, id) PK or the typed table's id PK. Both the
+		// generic and typed rows use this same id, so scope once here. The raw
+		// natural key stays in the data JSON and the parent stays in parent_id.
+		if resourceScopedNaturalKey[resourceType] {
+			if pv := lookupFieldValue(obj, "parent_id"); pv != nil {
+				if ps := fmt.Sprintf("%v", pv); ps != "" && ps != "<nil>" {
+					id = ps + ":" + id
+				}
+			}
 		}
 
 		if err := s.upsertGenericResourceTx(tx, resourceType, id, item); err != nil {
