@@ -102,6 +102,13 @@ func apiErr(err error) error       { return &cliError{code: 5, err: err} }
 func configErr(err error) error    { return &cliError{code: 10, err: err} }
 func rateLimitErr(err error) error { return &cliError{code: 7, err: err} }
 
+// unentitledErr signals that a gated resource (the AccuLLM tier, or a
+// tier-restricted resource like tag-history) was requested on an account whose
+// plan does not include it. Exit code 45 is distinct from authErr (4) so a sync
+// spine can tell "not entitled to this tier" (skip and move on) from "bad
+// credentials" (stop and re-auth). See dump.go dumpResources.gated.
+func unentitledErr(err error) error { return &cliError{code: 45, err: err} }
+
 // partialFailureErr signals that the upstream API returned a 2xx with a
 // body shape indicating some operations in a batch failed (e.g. Google
 // Ads `partialFailureError`, similar shapes from Drive batch, Sheets
