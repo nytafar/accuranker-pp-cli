@@ -101,6 +101,17 @@
       ],
       "validated_outcome": "Unit tests: two chunks returning the same baseline dedup to one is_initial=true row plus the daily rows; --probe-earliest finds a floor <= the seeded data start and streams no rows.",
       "findings_addressed": ["F11"]
+    },
+    {
+      "id": "dump-full-serp-fix",
+      "amend_run_id": "amend-2026-07-21T1630-full-serp-fix",
+      "summary": "dump full-serp now sets the API-required `limit` param and fetches one calendar day at a time (period_from == period_to, limit=500) instead of a single unpaginated request over the whole window. The keywords endpoint returns HTTP 422 for any full_serp request missing limit/period_from/period_to and enforces a 500 keyword-day cap; limit=500 reduces that to <=500 keywords/day, which both tracked domains satisfy (nyta ~319, myrvann fewer), so it is one request per day with no keyword paging. Setting limit also switches the endpoint to its DRF-paginated {count,next,previous,results} envelope, so the case decodes results[] instead of a bare array. Each day is its own dumpBatch so the F3 --envelope params reflect the real per-day request.",
+      "reason": "The F9 full-serp branch shipped without limit and issued one unpaginated request, so `dump full-serp` returned HTTP 422 and keyword_full_serp was BLOCKED in the Noracle M3 spine (impl-plan-m3-accuranker.md). The consumer contract (--envelope/--report-file/next_cursor/dedup, 100-day auto-chunk) is unchanged; this is purely a CLI fix. Keyword paging past 500 keywords/day is intentionally out of scope (not needed for the current account).",
+      "files": [
+        "internal/cli/dump.go"
+      ],
+      "validated_outcome": "Live 2026-07-21. Single day: dump full-serp --domain 295242 --from 2026-07-18 --to 2026-07-18 --envelope --agent -> exit 0, 319 rows, clean_exit:true, next_cursor 2026-07-18, no 422. Multi-day --from 2026-07-01 --to 2026-07-18 -> exit 0, 5742 rows = 18 days x 319, full per-day coverage, 0 dupes, one report clean_exit:true. Noracle adapter (m3-accuranker): bun src/adapters/accuranker/main.ts --store nyta --resource keyword_full_serp --from 2026-07-18 --to 2026-07-18 -> exit 0, 319 rows, one run-report JSON clean_exit:true. go build ./..., go vet ./internal/cli/, cli/client/schema test packages green.",
+      "findings_addressed": ["full-serp-422"]
     }
   ]
 }

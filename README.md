@@ -479,7 +479,12 @@ Environment variables:
 
 ## Known Gaps
 
+- **`dump full-serp` fetches at most 500 keywords per day.** Full SERP payloads are heavy, so the AccuRanker keywords endpoint caps any `full_serp` request at **500 total keyword-days**. `dump full-serp` therefore fetches one calendar day at a time with `limit=500`, which reduces the cap to **≤500 keywords per day**. Both currently tracked domains are comfortably under that (nyta ~319 keywords), so each day is a single request with full coverage. A domain with **more than 500 keywords** would silently receive only the first 500 for each day — keyword pagination past the cap is not implemented yet (see [Roadmap](#roadmap)).
 - **`workflow archive --json` returns mixed output.** The press-generated `workflow archive` command emits per-resource sync NDJSON events to stdout (from `internal/cli/sync.go`) and also a final JSON envelope on stdout, so the combined output is not parseable as a single JSON document. This is a press-side coordination issue between `sync.go` and `channel_workflow.go` (both regenerated each run); a fix has to land in the printing-press codegen, not in this CLI. **Workaround:** use the hand-authored `mirror` command instead — `accuranker-pp-cli mirror --domain <id> --json` produces a clean JSON envelope and is the recommended path for v2 Postgres mirroring. The plain-text form (`workflow archive` without `--json`) works as expected.
+
+## Roadmap
+
+- **`dump full-serp` keyword pagination (>500 keywords/day).** The per-day `full_serp` fetch uses `limit=500` and reads only the first page of the DRF-paginated envelope, which fully covers any domain with ≤500 keywords in a day (all current accounts). When a tracked domain crosses 500 keywords in a single day, add `offset`/`next`-cursor paging to the `full-serp` case in `internal/cli/dump.go` so every keyword-day is covered instead of truncating to the first 500. Deferred deliberately — it is not needed for the current account.
 
 ---
 
