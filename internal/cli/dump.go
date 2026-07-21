@@ -873,34 +873,56 @@ func dumpFetch(ctx context.Context, cl *client.Client, m *schema.Model, resource
 		return oneBatch(out, endpoint, q), nil
 
 	case "full-serp":
-		// PATCH(amend-2026-07-21: spec F9): keyword_full_serp, windowed like
-		// ranks, projected from the keywords list endpoint's full_serp array.
-		q := url.Values{}
-		q.Set("fields", "id,"+prefixFields("full_serp.", "created_at,search_intent,top_domain,elements"))
-		q.Set("period_from", from)
-		q.Set("period_to", to)
+		// PATCH(amend-2026-07-21-full-serp-fix: spec accuranker-cli-amend-full-serp-fix):
+		// keyword_full_serp, projected from the keywords list endpoint's full_serp
+		// array. The API REQUIRES limit+period_from+period_to for any full_serp
+		// request (else HTTP 422) and enforces a "500 total keyword-days" cap, so
+		// we fetch one calendar day at a time (period_from == period_to == day)
+		// with limit=500 → the cap reduces to "<=500 keywords/day", which both
+		// tracked domains satisfy → one request per day, no keyword paging. Each
+		// day is its own batch so the F3 envelope params reflect the real request.
 		endpoint := fmt.Sprintf("/api/v4/domains/%d/keywords/", scope)
-		body, err := apiGet(ctx, cl, endpoint, q)
+		days, err := chunkDateWindow(from, to, 1)
 		if err != nil {
 			return nil, err
 		}
-		var kw []struct {
-			ID       int64            `json:"id"`
-			FullSerp []map[string]any `json:"full_serp"`
-		}
-		if err := json.Unmarshal(body, &kw); err != nil {
-			return nil, err
-		}
-		out := make([]map[string]any, 0, 256)
-		for _, k := range kw {
-			for _, s := range k.FullSerp {
-				s["keyword_id"] = k.ID
-				s["domain_id"] = scope
-				stampSearchDate(s)
-				out = append(out, s)
+		batches := make([]dumpBatch, 0, len(days))
+		for _, day := range days {
+			q := url.Values{}
+			q.Set("fields", "id,"+prefixFields("full_serp.", "created_at,search_intent,top_domain,elements"))
+			q.Set("limit", "500")
+			q.Set("period_from", day[0])
+			q.Set("period_to", day[1])
+			body, err := apiGet(ctx, cl, endpoint, q)
+			if err != nil {
+				return nil, err
 			}
+			// Setting limit switches the keywords endpoint to its DRF-paginated
+			// envelope ({count,next,previous,results:[...]}) instead of a bare
+			// array. Both tracked domains fit under limit=500 (one page, next=null),
+			// so we read results directly — keyword paging is out of scope (see the
+			// case comment above).
+			var page struct {
+				Results []struct {
+					ID       int64            `json:"id"`
+					FullSerp []map[string]any `json:"full_serp"`
+				} `json:"results"`
+			}
+			if err := json.Unmarshal(body, &page); err != nil {
+				return nil, err
+			}
+			out := make([]map[string]any, 0, 256)
+			for _, k := range page.Results {
+				for _, s := range k.FullSerp {
+					s["keyword_id"] = k.ID
+					s["domain_id"] = scope
+					stampSearchDate(s)
+					out = append(out, s)
+				}
+			}
+			batches = append(batches, dumpBatch{rows: out, endpoint: endpoint, params: q})
 		}
-		return oneBatch(out, endpoint, q), nil
+		return batches, nil
 
 	case "search-volume-history":
 		// PATCH(amend-2026-07-21: spec F9): monthly search volume per keyword.
