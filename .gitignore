@@ -1,6 +1,7 @@
 # Compiled binaries (built fresh from source)
 /accuranker-pp-cli
 /accuranker-pp-mcp
+/bin/
 /build/stage/
 /build/*.mcpb
 
