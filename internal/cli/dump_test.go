@@ -225,7 +225,8 @@ func TestDedupKeyPerResource(t *testing.T) {
 	}{
 		{"keywords", map[string]any{"id": int64(5)}, "kw:5"},
 		{"competitors", map[string]any{"id": int64(9)}, "cp:9"},
-		{"landing-pages", map[string]any{"id": int64(3)}, "lp:3"},
+		// id is absent on this tier, so landing pages key on domain_id:path.
+		{"landing-pages", map[string]any{"domain_id": int64(7), "path": "/produkt/lions-mane/"}, "lp:7:/produkt/lions-mane/"},
 		{"tags", map[string]any{"domain_id": int64(7), "tag": "brand"}, "tg:7:brand"},
 		{"competitor-ranks", map[string]any{"keyword_id": int64(1), "competitor_id": int64(2), "search_date": "2026-01-01"}, "cr:1:2:2026-01-01"},
 		// keyword-ranks keys on is_initial too so the baseline row never
@@ -236,7 +237,8 @@ func TestDedupKeyPerResource(t *testing.T) {
 		{"search-volume-history", map[string]any{"keyword_id": int64(4), "month": "2026-02-01"}, "svh:4:2026-02-01"},
 		{"ai-search-volume-history", map[string]any{"keyword_id": int64(4), "month": "2026-02-01"}, "asvh:4:2026-02-01"},
 		{"competitor-history", map[string]any{"competitor_id": int64(8), "date": "2026-02-02"}, "ch:8:2026-02-02"},
-		{"landing-page-history", map[string]any{"landing_page_id": int64(6), "date": "2026-02-02"}, "lph:6:2026-02-02"},
+		// landing_page_id is 0 on this tier, so history keys on domain_id:path:date.
+		{"landing-page-history", map[string]any{"domain_id": int64(7), "path": "/produkt/lions-mane/", "date": "2026-02-02"}, "lph:7:/produkt/lions-mane/:2026-02-02"},
 		{"tag-history", map[string]any{"domain_id": int64(7), "tag": "brand", "date": "2026-02-02"}, "th:7:brand:2026-02-02"},
 		{"people-also-ask", map[string]any{"keyword_id": int64(4), "term": "how to brew"}, "paa:4:how to brew"},
 		{"domains", map[string]any{"id": int64(295242)}, "dm:295242"},

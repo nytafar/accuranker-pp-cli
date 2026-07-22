@@ -889,7 +889,19 @@ func dumpFetch(ctx context.Context, cl *client.Client, m *schema.Model, resource
 		batches := make([]dumpBatch, 0, len(days))
 		for _, day := range days {
 			q := url.Values{}
-			q.Set("fields", "id,"+prefixFields("full_serp.", "created_at,search_intent,top_domain,elements"))
+			// PATCH(amend-2026-07-22-serp-urls: spec accuranker-cli-amendment-spec #1):
+			// name the leaf fields under full_serp.elements explicitly. The DRF
+			// fields-API returns only a minimal default (is_own_domain,
+			// is_first_occurrence_of_domain) for the bare `elements` parent object,
+			// and the `.elements.*` wildcard does not expand either — so url/title/
+			// position/etc were dropped. Enumerating the leaves yields the full SERP
+			// per position. Same per-day request → no extra keyword-days, no cost.
+			q.Set("fields", "id,"+prefixFields("full_serp.", "created_at,search_intent,top_domain,"+
+				"elements.element_type,elements.url,elements.position_on_serp,"+
+				"elements.rank,elements.rank_in_serp_feature,elements.base_rank,"+
+				"elements.local_pack_rank,elements.is_own_domain,"+
+				"elements.is_first_occurrence_of_domain,elements.title,"+
+				"elements.description,elements.above_the_fold,elements.page_num"))
 			q.Set("limit", "500")
 			q.Set("period_from", day[0])
 			q.Set("period_to", day[1])
@@ -1024,7 +1036,10 @@ func dumpFetch(ctx context.Context, cl *client.Client, m *schema.Model, resource
 		// landing_pages.default_fields), so no store-aware per-page enumeration
 		// is needed — one call per (domain, chunk).
 		q := url.Values{}
-		q.Set("fields", "id,landing_page,"+modelAPIFields(m, "landing_page_history", "history.", landingPageHistorySkip))
+		// PATCH(amend-2026-07-22-serp-urls: spec #3): request `path` explicitly.
+		// `id` is absent on this tier so `path` is the only per-page natural key;
+		// without it every history row collapses to one dedup bucket.
+		q.Set("fields", "id,path,landing_page,"+modelAPIFields(m, "landing_page_history", "history.", landingPageHistorySkip))
 		q.Set("period_from", from)
 		q.Set("period_to", to)
 		endpoint := fmt.Sprintf("/api/v4/domains/%d/landing_pages/", scope)
@@ -1044,7 +1059,11 @@ func dumpFetch(ctx context.Context, cl *client.Client, m *schema.Model, resource
 		out := make([]map[string]any, 0, 256)
 		for _, lp := range raw {
 			for _, h := range lp.History {
+				// PATCH(amend-2026-07-22-serp-urls: spec #3): `id` is absent on this
+				// tier (landing_page_id == 0 for every page), so carry `path` as the
+				// natural key — the dedup key is domain_id:path:date, not id.
 				h["landing_page_id"] = lp.ID
+				h["path"] = lp.Path
 				h["domain_id"] = scope
 				out = append(out, h)
 			}
@@ -1585,9 +1604,12 @@ func dedupKey(resource string, row map[string]any) string {
 		date, _ := row["date"].(string)
 		return fmt.Sprintf("ch:%d:%s", cid, date)
 	case "landing-page-history":
-		lid, _ := extractInt64(row, "landing_page_id")
+		// PATCH(amend-2026-07-22-serp-urls: spec #3): landing_page_id is 0 on this
+		// tier (no id), so key on the domain_id:path:date natural key instead.
+		did, _ := extractInt64(row, "domain_id")
+		path, _ := row["path"].(string)
 		date, _ := row["date"].(string)
-		return fmt.Sprintf("lph:%d:%s", lid, date)
+		return fmt.Sprintf("lph:%d:%s:%s", did, path, date)
 	case "tag-history":
 		did, _ := extractInt64(row, "domain_id")
 		tag, _ := row["tag"].(string)
@@ -1600,8 +1622,11 @@ func dedupKey(resource string, row map[string]any) string {
 		id, _ := extractInt64(row, "id")
 		return fmt.Sprintf("cp:%d", id)
 	case "landing-pages":
-		id, _ := extractInt64(row, "id")
-		return fmt.Sprintf("lp:%d", id)
+		// PATCH(amend-2026-07-22-serp-urls: spec #2): `id` is absent on this tier,
+		// so every row keyed to lp:0 and 17 of 18 were dropped. Key on domain_id:path.
+		did, _ := extractInt64(row, "domain_id")
+		path, _ := row["path"].(string)
+		return fmt.Sprintf("lp:%d:%s", did, path)
 	case "tags":
 		did, _ := extractInt64(row, "domain_id")
 		tag, _ := row["tag"].(string)
