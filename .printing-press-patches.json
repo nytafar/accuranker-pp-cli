@@ -112,6 +112,18 @@
       ],
       "validated_outcome": "Live 2026-07-21. Single day: dump full-serp --domain 295242 --from 2026-07-18 --to 2026-07-18 --envelope --agent -> exit 0, 319 rows, clean_exit:true, next_cursor 2026-07-18, no 422. Multi-day --from 2026-07-01 --to 2026-07-18 -> exit 0, 5742 rows = 18 days x 319, full per-day coverage, 0 dupes, one report clean_exit:true. Noracle adapter (m3-accuranker): bun src/adapters/accuranker/main.ts --store nyta --resource keyword_full_serp --from 2026-07-18 --to 2026-07-18 -> exit 0, 319 rows, one run-report JSON clean_exit:true. go build ./..., go vet ./internal/cli/, cli/client/schema test packages green.",
       "findings_addressed": ["full-serp-422"]
+    },
+    {
+      "id": "serp-urls-landing-page-identity",
+      "amend_run_id": "amend-2026-07-22-serp-urls",
+      "summary": "Three operator-confirmed data gaps closed (live domain 295242), all CLI-side with no new endpoint or extra API cost. (1) full-serp leaf-field expansion: the bare `full_serp.elements` request returned only the two default booleans because the DRF `.elements.*` wildcard does not expand, so the leaf fields (url, title, position_on_serp, rank, element_type, base_rank, ...) are now enumerated explicitly and payload.elements[] carry the full SERP per position. (2) landing-pages dedup keyed on domain_id:path (`lp:%d:%s`): `id` is absent on this tier so the old `lp:%d` key collapsed every row to lp:0 and dropped 17 of 18 pages. (3) landing-page-history requests `path` explicitly, copies it onto each history row, and keys on domain_id:path:date (`lph:%d:%s:%s`) instead of the always-zero landing_page_id so per-page rows no longer collide.",
+      "reason": "Downstream Noracle consumers need SERP element URLs (landing-page attribution) and complete per-page landing-page coverage; the F9 dump surface shipped these three resources with empty or colliding identity. Spec: docs/superpowers/specs/2026-07-22-accuranker-cli-amendment-spec.md (noracle repo).",
+      "files": [
+        "internal/cli/dump.go",
+        "internal/cli/dump_test.go"
+      ],
+      "validated_outcome": "Live 2026-07-22 on domain 295242: full-serp payload.elements[].url populated (organic 20181/20181); landing-pages streams 18 distinct-path rows; landing-page-history streams 19 rows each with a distinct non-empty path. TestDedupKeyPerResource updated for the new landing-page keys; go build ./... + go test ./... green. linux/amd64 build deployed to the XL box 2026-07-23 00:15 and consumed by the Noracle side.",
+      "findings_addressed": ["serp-element-urls", "landing-page-identity"]
     }
   ]
 }
